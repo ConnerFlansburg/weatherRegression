@@ -37,6 +37,9 @@ log.basicConfig(level=log.DEBUG, filename=str(log_path), format='%(levelname)s-%
 # set up the global config for the loading bars
 config_handler.set_global(spinner='dots_reverse', bar='smooth', unknown='stars', title_length=0, length=20)
 
+# set the seed for the random library
+random.seed(SEED)
+
 
 def main():
 
@@ -70,10 +73,10 @@ def main():
 
     # * Run the Neural Network * #
     # run_network()
-
-    print(banner('Regression Report'))
+    print('')
+    print(banner(' Regression Report '))
     # format the data frame
-    regression_report.round(decimals=3)
+    regression_report = regression_report.round(decimals=3)
     # regression_report = regression_report.transpose()
 
     with pd.option_context('display.max_rows', None,
@@ -98,6 +101,14 @@ def read_in(fl: str) -> pd.DataFrame:
     data['date'] = pd.to_datetime(data['date'])
     # ? converting the date doesn't seem to make it compatible
     del data['date']  # drop the data column
+
+    # * Drop the OBS Cols (except sknt_max) * #
+    # create s dataframe with every col whose name contains 'OBS'
+    drop_df = data.filter(like='OBS')
+    # remove the target from the list of cols to be deleted
+    del drop_df['OBS_sknt_max']
+    # get the col names from drop_df & drop them from the original frame
+    data.drop(list(drop_df.columns), axis=1, inplace=True)
 
     if type(data) != pd.DataFrame:
         printError(f'read_in returned a {type(data)}')
@@ -147,24 +158,22 @@ def remove_outlier(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def reduce_data(data: pd.DataFrame, bar) -> pd.DataFrame:
-
-    # * Transform Data * #
-    bar.text('transforming data')
+def reduce_data(train: pd.DataFrame, test: pd.DataFrame, bar) -> typ.Dict[str, pd.DataFrame]:
 
     # * Dimensionality Reduction * #
     bar.text('reducing data')
-    model = PCA()                                   # create the model
-    reduced = model.fit_transform(data)  # fit & reduce the data
 
-    # cast the scaled data back into a dataframe
-    data = pd.DataFrame(reduced, index=data.index)
+    # this dict will store the labels & reduced data for return
+    rtn: typ.Dict[str, pd.DataFrame] = {'Train Label': train['OBS_sknt_max'],
+                                        'Test Label': test['OBS_sknt_max']}
 
-    if type(data) != pd.DataFrame:
-        printError(f'reduce_data returned a {type(data)}')
-        sys.exit(-1)
+    model = PCA()  # create the model
+    # fit & reduce the training data
+    rtn['Train Data'] = pd.DataFrame(model.fit_transform(train.drop('OBS_sknt_max', axis=1)), index=train.index)
+    # reduce the training data
+    rtn['Test Data'] = pd.DataFrame(model.transform(test.drop('OBS_sknt_max', axis=1)), index=test.index)
 
-    return data
+    return rtn
 
 
 def split_random(data_in: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
@@ -267,17 +276,17 @@ def create_report(rand: typ.Dict[str, float], fixed: typ.Dict[str, float]) -> pd
     return df
 
 
-def signed_error(model, test) -> float:
+def signed_error(model, data, label) -> float:
     """ Calculate the Mean Signed Error """
-    prediction = model.predict(test.drop('OBS_sknt_max', axis=1))
-    actual = test['OBS_sknt_max']
+    prediction = model.predict(data)
+    actual = label
     num_instances = len(actual)  # the number of examples in the test set
 
     if len(prediction) != len(actual):  # check that both are equal
         printError('Actual & Prediction are not equal!')
         sys.exit(-1)
 
-    # combine the predct & act so we can loop in parallel
+    # combine the predict & act so we can loop in parallel
     # compare each prediction with the actual value
     total = 0  # this will hold the sum of each sqr
     # mean sqr = (predicted_value - actual_value)^2 * 1/num_examples
@@ -289,17 +298,17 @@ def signed_error(model, test) -> float:
     return avr
 
 
-def absolute_error(model, test) -> float:
+def absolute_error(model, data, label) -> float:
     """ Calculate the Mean Absolute Error """
-    prediction = model.predict(test.drop('OBS_sknt_max', axis=1))
-    actual = test['OBS_sknt_max']
+    prediction = model.predict(data)
+    actual = label
     num_instances = len(actual)  # the number of examples in the test set
 
     if len(prediction) != len(actual):  # check that both are equal
         printError('Actual & Prediction are not equal!')
         sys.exit(-1)
 
-    # combine the predct & act so we can loop in parallel
+    # combine the predict & act so we can loop in parallel
     # compare each prediction with the actual value
     total = 0  # this will hold the sum of each sqr
     # mean sqr = (predicted_value - actual_value)^2 * 1/num_examples
@@ -311,19 +320,18 @@ def absolute_error(model, test) -> float:
     return avr
 
 
-def squared_error(model, test) -> float:
+def squared_error(model, data, label) -> float:
     """ Calculate the Mean Squared Error """
-    prediction = model.predict(test.drop('OBS_sknt_max', axis=1))
-    actual = test['OBS_sknt_max']
+    prediction = model.predict(data)
+    actual = label
     num_instances = len(actual)  # the number of examples in the test set
 
     if len(prediction) != len(actual):  # check that both are equal
         printError('Actual & Prediction are not equal!')
         sys.exit(-1)
 
-    # combine the predct & act so we can loop in parallel
+    # combine the predict & act so we can loop in parallel
     # compare each prediction with the actual value
-    vls = []  # ! used in debugging
     total = 0  # this will hold the sum of each sqr
     # mean sqr = (predicted_value - actual_value)^2 * 1/num_examples
     for predict, actual in zip(prediction, actual):
@@ -345,7 +353,7 @@ def run_regression(data_in: pd.DataFrame):
 
     print(banner(' Starting Liner Regression '))
     data_in: pd.DataFrame = pd.DataFrame(data_in)
-    b_total: int = len(data_in.index)  # this is used by the progress bar
+    b_total: int = len(data_in.index) + 2  # this is used by the progress bar
 
     def random_data() -> typ.Dict[str, float]:
         """Perform linear regression with randomly divided data"""
@@ -355,7 +363,8 @@ def run_regression(data_in: pd.DataFrame):
 
         train: pd.DataFrame
         test: pd.DataFrame
-        train, test = split_random(data_in, bar_rand)  # randomly split dataset)
+        train, test = split_random(data_in, bar_rand)  # randomly split dataset
+        reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, bar_rand)
 
         # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
         # model.fit() takes 2 parameters: X & Y (in that order)
@@ -363,9 +372,9 @@ def run_regression(data_in: pd.DataFrame):
         # In this case it will be everything but Y
         # ! At this point we can't drop the col because they have no names because of reduce_data
         # perform preprocessing
-        X: pd.DataFrame = train.drop('OBS_sknt_max', axis=1)
+        X: pd.DataFrame = reduced['Train Data']
         # Y = the target label (OBS_sknt_max for windspeed)
-        Y: pd.DataFrame = train['OBS_sknt_max']
+        Y: pd.DataFrame = reduced['Train Label']
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
         bar_rand.text('training model')
@@ -375,9 +384,9 @@ def run_regression(data_in: pd.DataFrame):
 
         # calculate the error scores
         results: typ.Dict = {
-            'absolute': absolute_error(model, test),
-            'squared': squared_error(model, test),
-            'signed': signed_error(model, test),
+            'absolute': absolute_error(model, reduced['Test Data'], reduced['Test Label']),
+            'squared': squared_error(model, reduced['Test Data'], reduced['Test Label']),
+            'signed': signed_error(model, reduced['Test Data'], reduced['Test Label']),
         }
 
         return results
@@ -389,15 +398,16 @@ def run_regression(data_in: pd.DataFrame):
         bar_fxd()
 
         train, test = split_fixed(data_in, bar_fxd)  # split dataset
+        reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, bar_fxd)
 
         # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
         # model.fit() takes 2 parameters: X & Y (in that order)
         # X = the labels we suspect are correlated
         # In this case it will be everything but Y
         # perform preprocessing
-        X: pd.DataFrame = train.drop('OBS_sknt_max', axis=1)
+        X: pd.DataFrame = reduced['Train Data']
         # Y = the target label (OBS_sknt_max for windspeed)
-        Y: pd.DataFrame = train['OBS_sknt_max']
+        Y: pd.DataFrame = reduced['Train Label']
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
         bar_fxd.text('training model')
@@ -407,19 +417,19 @@ def run_regression(data_in: pd.DataFrame):
 
         # calculate the error scores
         results = {
-            'absolute': absolute_error(model, test),
-            'squared': squared_error(model, test),
-            'signed': signed_error(model, test),
+            'absolute': absolute_error(model, reduced['Test Data'], reduced['Test Label']),
+            'squared': squared_error(model, reduced['Test Data'], reduced['Test Label']),
+            'signed': signed_error(model, reduced['Test Data'], reduced['Test Label']),
         }
 
         return results
 
-    with alive_bar(b_total+2, title='Regression (random split)') as bar_rand:
+    with alive_bar(b_total, title='Regression (random split)') as bar_rand:
         log.debug('Regression - random_data() called')
         rand = random_data()   # run the regression with a random data split
         log.debug('Regression - random_data() completed')
 
-    with alive_bar(b_total+1, title='Regression (random split)') as bar_fxd:
+    with alive_bar(b_total, title='Regression (fixed split)') as bar_fxd:
         log.debug('Regression - fixed_data() called')
         fixed = fixed_data()   # run the regression with a fixed data split
         log.debug('Regression - fixed_data() completed')

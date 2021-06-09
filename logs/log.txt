@@ -235,3 +235,174 @@ DEBUG-Regression performed successfully
 DEBUG-Program completed successfully
 DEBUG-closing...
 
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-Regression - random_data() completed
+DEBUG-Regression - fixed_data() called
+DEBUG-Fixed data split started
+DEBUG-Fixed data split finished
+DEBUG-Regression - fixed_data() completed
+DEBUG-Regression performed successfully
+DEBUG-Program completed successfully
+DEBUG-closing...
+
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-Regression - random_data() completed
+DEBUG-Regression - fixed_data() called
+DEBUG-Fixed data split started
+DEBUG-Fixed data split finished
+DEBUG-Regression - fixed_data() completed
+DEBUG-Regression performed successfully
+DEBUG-Program completed successfully
+DEBUG-closing...
+
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-Regression - random_data() completed
+DEBUG-Regression - fixed_data() called
+DEBUG-Fixed data split started
+DEBUG-Fixed data split finished
+DEBUG-Regression - fixed_data() completed
+DEBUG-Regression performed successfully
+DEBUG-Program completed successfully
+DEBUG-closing...
+
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-Regression - random_data() completed
+DEBUG-Regression - fixed_data() called
+DEBUG-Fixed data split started
+DEBUG-Fixed data split finished
+DEBUG-Regression - fixed_data() completed
+DEBUG-Regression performed successfully
+DEBUG-Program completed successfully
+DEBUG-closing...
+
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-Regression - random_data() completed
+DEBUG-Regression - fixed_data() called
+DEBUG-Fixed data split started
+DEBUG-Fixed data split finished
+DEBUG-Regression - fixed_data() completed
+DEBUG-Regression performed successfully
+DEBUG-Program completed successfully
+DEBUG-closing...
+
+DEBUG-
+Starting...
+DEBUG-Started successfully
+INFO-NumExpr defaulting to 6 threads.
+DEBUG-Data read in successfully
+DEBUG-Data Scaling finished
+DEBUG-Regression - random_data() called
+DEBUG-Random data split started
+DEBUG-Random data split finished
+DEBUG-Regression - random_data() completed
+DEBUG-Regression - fixed_data() called
+DEBUG-Fixed data split started
+DEBUG-Fixed data split finished
+DEBUG-Regression - fixed_data() completed
+DEBUG-Regression performed successfully
+DEBUG-Program completed successfully
+DEBUG-closing...
+
