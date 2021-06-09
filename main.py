@@ -179,41 +179,10 @@ def reduce_data(train: pd.DataFrame, test: pd.DataFrame, bar) -> typ.Dict[str, p
 def split_random(data_in: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
     # TODO: comment
     log.debug('Random data split started')
-    num_rows: int = len(data_in.index)  # get the number of rows
-    # get the number of instances to be added to the training data
-    size_train: int = math.ceil(0.80 * num_rows)
-    # get the number of instances to be added to the testing data
-    size_test: int = math.ceil(0.20 * num_rows)
 
-    # create the empty train dataframe
-    train: pd.DataFrame = pd.DataFrame(columns=data_in.columns)
-    # create the empty test dataframe
-    test: pd.DataFrame = pd.DataFrame(columns=data_in.columns)
-    # *** Divide the Data *** #
     bar.text('splitting data')
-    # iterrows returns the row index (grab it), then the row as a dict (ignore)
-    for index, __ in data_in.iterrows():  # loop over every row
-        r = data_in.loc[index]  # get the row using the index
-        if len(train.axes[0]) >= size_train:  # if train is full
-            test = test.append(r, ignore_index=True)  # add to test
-        elif len(test.axes[0]) >= size_test:  # if test is full
-            train = train.append(r, ignore_index=True)  # add to train
-        else:  # if neither are full,
-            choice = random.choice(['train', 'test'])
-            if choice == 'train':  # if train was chosen
-                train = train.append(r, ignore_index=True)  # add to train
-            else:  # otherwise add to test
-                test = test.append(r, ignore_index=True)
-        bar()
-
-    # ! Test this
-    # Creating a dataframe with 50%
-    # values of original dataframe
-    train = data_in.sample(frac=0.8)
-
-    # Creating dataframe with
-    # rest of the 50% values
-    test = data_in.drop(train.index)
+    train = data_in.sample(frac=0.8, random_state=SEED)  # create a df with 80% of instances
+    test = data_in.drop(train.index)                     # create a df with the remaining 20%
 
     return train, test
 
@@ -339,13 +308,11 @@ def run_regression(data_in: pd.DataFrame):
 
     print(banner(' Starting Liner Regression '))
     data_in: pd.DataFrame = pd.DataFrame(data_in)
-    b_total: int = len(data_in.index) + 2  # this is used by the progress bar
 
     def random_data() -> typ.Dict[str, float]:
         """Perform linear regression with randomly divided data"""
         model = LinearRegression()  # create the regression model
         bar_rand.text('model built')
-        bar_rand()
 
         train: pd.DataFrame
         test: pd.DataFrame
@@ -366,7 +333,6 @@ def run_regression(data_in: pd.DataFrame):
         bar_rand.text('training model')
         model.fit(X, Y)  # fit the model using X & Y (see above)
         bar_rand.text('model trained')
-        bar_rand()
 
         # calculate the error scores
         results: typ.Dict = {
@@ -408,7 +374,7 @@ def run_regression(data_in: pd.DataFrame):
 
         return results
 
-    with alive_bar(b_total, title='Regression (random split)') as bar_rand:
+    with alive_bar(title='Regression (random split)') as bar_rand:
         log.debug('Regression - random_data() called')
         rand = random_data()   # run the regression with a random data split
         log.debug('Regression - random_data() completed')
