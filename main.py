@@ -179,7 +179,6 @@ def reduce_data(train: pd.DataFrame, test: pd.DataFrame, bar) -> typ.Dict[str, p
 def split_random(data_in: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
     # TODO: comment
     log.debug('Random data split started')
-
     num_rows: int = len(data_in.index)  # get the number of rows
     # get the number of instances to be added to the training data
     size_train: int = math.ceil(0.80 * num_rows)
@@ -190,33 +189,32 @@ def split_random(data_in: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataF
     train: pd.DataFrame = pd.DataFrame(columns=data_in.columns)
     # create the empty test dataframe
     test: pd.DataFrame = pd.DataFrame(columns=data_in.columns)
-
     # *** Divide the Data *** #
     bar.text('splitting data')
     # iterrows returns the row index (grab it), then the row as a dict (ignore)
-    for index, __ in data_in.iterrows():                # loop over every row
-        r = data_in.loc[index]                          # get the row using the index
-        if len(train.axes[0]) >= size_train:            # if train is full
-            test = test.append(r, ignore_index=True)    # add to test
-        elif len(test.axes[0]) >= size_test:            # if test is full
+    for index, __ in data_in.iterrows():  # loop over every row
+        r = data_in.loc[index]  # get the row using the index
+        if len(train.axes[0]) >= size_train:  # if train is full
+            test = test.append(r, ignore_index=True)  # add to test
+        elif len(test.axes[0]) >= size_test:  # if test is full
             train = train.append(r, ignore_index=True)  # add to train
-        else:                                           # if neither are full,
+        else:  # if neither are full,
             choice = random.choice(['train', 'test'])
-            if choice == 'train':                           # if train was chosen
+            if choice == 'train':  # if train was chosen
                 train = train.append(r, ignore_index=True)  # add to train
-            else:                                           # otherwise add to test
+            else:  # otherwise add to test
                 test = test.append(r, ignore_index=True)
         bar()
 
-    if type(train) != pd.DataFrame:
-        printError(f'split_random returned train as a {type(train)}')
-        sys.exit(-1)
+    # ! Test this
+    # Creating a dataframe with 50%
+    # values of original dataframe
+    train = data_in.sample(frac=0.8)
 
-    if type(test) != pd.DataFrame:
-        printError(f'split_random returned test as a {type(test)}')
-        sys.exit(-1)
+    # Creating dataframe with
+    # rest of the 50% values
+    test = data_in.drop(train.index)
 
-    log.debug('Random data split finished')
     return train, test
 
 
@@ -228,28 +226,11 @@ def split_fixed(data_in: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataFr
     # get the number of instances to be added to the training data
     size_train: int = math.ceil(0.80 * num_rows)
 
+    bar.text('splitting data')
     # slice the dataframe [rows, cols] & grab everything up to size_train
     train: pd.DataFrame = data_in.iloc[:size_train+1, :]
     # slice the dataframe [rows, cols] & grab everything after size_train
-    train: pd.DataFrame = data_in.iloc[size_train+1:, :]
-
-    # create the empty train dataframe
-    train: pd.DataFrame = pd.DataFrame(columns=data_in.columns)
-    # create the empty test dataframe
-    test: pd.DataFrame = pd.DataFrame(columns=data_in.columns)
-
-    # *** Divide the Data *** #
-    bar.text('splitting data')
-    # iterrows returns the row index (grab it), then the row as a dict (ignore)
-    count: int = 0  # this lets us know when to switch from train to test
-    for index, __ in data_in.iterrows():  # loop over every row
-        r = data_in.loc[index]            # get the row by using the index
-        if count < size_train:            # if we haven't filled the train set
-            train = train.append(r)       # add to the training set
-            count += 1                    # increment count
-        else:
-            test = test.append(r)         # otherwise add to test
-        bar()
+    test: pd.DataFrame = data_in.iloc[size_train+1:, :]
 
     log.debug('Fixed data split finished')
     return train, test
@@ -400,7 +381,6 @@ def run_regression(data_in: pd.DataFrame):
         """Perform linear regression with a fixed data division"""
         model = LinearRegression()  # create the regression model
         bar_fxd.text('model built')
-        bar_fxd()
 
         train, test = split_fixed(data_in, bar_fxd)  # split dataset
         reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, bar_fxd)
@@ -418,7 +398,6 @@ def run_regression(data_in: pd.DataFrame):
         bar_fxd.text('training model')
         model.fit(X, Y)  # fit the model using X & Y (see above)
         bar_fxd.text('model trained')
-        bar_fxd()
 
         # calculate the error scores
         results = {
@@ -434,7 +413,7 @@ def run_regression(data_in: pd.DataFrame):
         rand = random_data()   # run the regression with a random data split
         log.debug('Regression - random_data() completed')
 
-    with alive_bar(b_total, title='Regression (fixed split)') as bar_fxd:
+    with alive_bar(title='Regression (fixed split)') as bar_fxd:
         log.debug('Regression - fixed_data() called')
         fixed = fixed_data()   # run the regression with a fixed data split
         log.debug('Regression - fixed_data() completed')
