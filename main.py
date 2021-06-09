@@ -228,6 +228,11 @@ def split_fixed(data_in: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataFr
     # get the number of instances to be added to the training data
     size_train: int = math.ceil(0.80 * num_rows)
 
+    # slice the dataframe [rows, cols] & grab everything up to size_train
+    train: pd.DataFrame = data_in.iloc[:size_train+1, :]
+    # slice the dataframe [rows, cols] & grab everything after size_train
+    train: pd.DataFrame = data_in.iloc[size_train+1:, :]
+
     # create the empty train dataframe
     train: pd.DataFrame = pd.DataFrame(columns=data_in.columns)
     # create the empty test dataframe
