@@ -9,7 +9,7 @@ Github Repo:
 import sys
 import math
 import random
-import traceback
+# import traceback
 import logging as log
 import numpy as np
 import pandas as pd
@@ -17,13 +17,13 @@ import pathlib as pth
 import typing as typ
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
-from pprint import pprint
-from formatting import printBanner, banner, printError, printWarn, printSuccess
+# from pprint import pprint
+from formatting import banner, printError
 from alive_progress import alive_bar, config_handler
 from pyfiglet import Figlet
 from sklearn.linear_model import LinearRegression
 
-SEED: int = 498
+SEED: int = 368
 HDR = '*' * 6
 SUCCESS = u' \u2713\n'+'\033[0m'       # print the checkmark & reset text color
 OVERWRITE = '\r' + '\033[32;1m' + HDR  # overwrite previous text & set the text color to green
@@ -32,10 +32,10 @@ SYSOUT = sys.stdout                    # SYSOUT set the standard out for the pro
 
 # Set up the logger
 log_path = pth.Path.cwd() / 'logs' / 'log.txt'
-log.basicConfig(level=log.DEBUG, filename=str(log_path), format='%(levelname)s-%(message)s')
+log.basicConfig(level=log.ERROR, filename=str(log_path), format='%(levelname)s-%(message)s')
 
 # set up the global config for the loading bars
-config_handler.set_global(spinner='dots_reverse', bar='smooth', unknown='stars', title_length=0, length=20)
+config_handler.set_global(spinner='dots_reverse', bar='smooth', unknown='message_scrolling', title_length=0, length=20)
 
 # set the seed for the random library
 random.seed(SEED)
@@ -71,17 +71,16 @@ def main():
     regression_report: pd.DataFrame = run_regression(df_in)
     log.debug('Regression performed successfully')
 
+    # * Display & Save Report * #
+    print(f"\n{banner(' Regression Report ')}")
+    regression_report = regression_report.round(decimals=3)     # format the data frame
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
+        print(regression_report)                                # display results
+    rOut = pth.Path.cwd() / 'output' / 'regression_report.csv'  # create file path
+    regression_report.to_csv(str(rOut))                         # save the results to a file
+
     # * Run the Neural Network * #
     # run_network()
-    print('')
-    print(banner(' Regression Report '))
-    # format the data frame
-    regression_report = regression_report.round(decimals=3)
-    # regression_report = regression_report.transpose()
-
-    with pd.option_context('display.max_rows', None,
-                           'display.max_columns', None, ):
-        print(regression_report)
 
     log.debug('Program completed successfully')
 
@@ -104,11 +103,11 @@ def read_in(fl: str) -> pd.DataFrame:
 
     # * Drop the OBS Cols (except sknt_max) * #
     # create s dataframe with every col whose name contains 'OBS'
-    drop_df = data.filter(like='OBS')
+    # drop_df = data.filter(like='OBS')
     # remove the target from the list of cols to be deleted
-    del drop_df['OBS_sknt_max']
+    # del drop_df['OBS_sknt_max']
     # get the col names from drop_df & drop them from the original frame
-    data.drop(list(drop_df.columns), axis=1, inplace=True)
+    # data.drop(list(drop_df.columns), axis=1, inplace=True)
 
     if type(data) != pd.DataFrame:
         printError(f'read_in returned a {type(data)}')
@@ -167,7 +166,7 @@ def reduce_data(train: pd.DataFrame, test: pd.DataFrame, bar) -> typ.Dict[str, p
     rtn: typ.Dict[str, pd.DataFrame] = {'Train Label': train['OBS_sknt_max'],
                                         'Test Label': test['OBS_sknt_max']}
 
-    model = PCA()  # create the model
+    model = PCA(n_components=0.65, svd_solver='full')  # create the model
     # fit & reduce the training data
     rtn['Train Data'] = pd.DataFrame(model.fit_transform(train.drop('OBS_sknt_max', axis=1)), index=train.index)
     # reduce the training data
@@ -272,14 +271,22 @@ def absolute_error(model, data, label) -> float:
 
     # divide the total sqr by the number of examples to get the average
     avr = round(total * (1 / num_instances), 3)
+
     return avr
 
 
 def squared_error(model, data, label) -> float:
     """ Calculate the Mean Squared Error """
-    prediction = model.predict(data)
+    model.predict(data)
+    prediction = [round(i, 5) for i in model.predict(data)]
     actual = label
     num_instances = len(actual)  # the number of examples in the test set
+
+    # ! for debugging, print prediction to file
+    rst = list(zip(prediction, actual))
+    df = pd.DataFrame(rst, columns=['Prediction', 'Actual'])
+    df.to_csv(str(pth.Path.cwd() / 'logs' / 'predict.csv'))
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
     if len(prediction) != len(actual):  # check that both are equal
         printError('Actual & Prediction are not equal!')
@@ -417,6 +424,6 @@ def run_network():
 
 
 if __name__ == '__main__':
-    log.debug('\nStarting...')
+    log.debug('Starting...')
     main()
     log.debug('closing...\n')

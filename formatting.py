@@ -8,6 +8,7 @@ OVERWRITE = '\r' + '\033[32;1m' + HDR  # overwrite previous text & set the text 
 NO_OVERWRITE = '\033[32;1m' + HDR      # NO_OVERWRITE colors lines green that don't use overwrite
 SYSOUT = sys.stdout                    # SYSOUT set the standard out for the program to the console
 
+
 def printWarn(message: str):
     """
     printWarn is used for coloring warnings yellow.
@@ -75,7 +76,7 @@ def banner(msg: str) -> str:
     return msg.center(50, '*')
 
 
-def printBanner(msg: str) -> str:
+def printBanner(msg: str):
     """ Like banner, but prints rather than return """
     SYSOUT.write(msg.center(50, '*'))
 
