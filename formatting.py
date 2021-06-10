@@ -26,6 +26,11 @@ def printSuccess(message: str):
     print(f"\033[32;1m{message}\033[00m")
 
 
+def success(message: str) -> str:
+    """ Colors a string green & returns it."""
+    return f"\033[32;1m{message}\033[00m"
+
+
 def printError(message: str):
     """
     printError is used for coloring error messages red.

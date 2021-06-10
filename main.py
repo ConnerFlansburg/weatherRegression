@@ -18,10 +18,12 @@ import typing as typ
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
 # from pprint import pprint
-from formatting import banner, printError
+from formatting import banner, printError, success
 from alive_progress import alive_bar, config_handler
 from pyfiglet import Figlet
 from sklearn.linear_model import LinearRegression
+from yaspin import yaspin
+
 
 SEED: int = 368
 HDR = '*' * 6
@@ -55,7 +57,7 @@ def main():
     SYSOUT.write(HDR + ' Reading in file...')
     SYSOUT.flush()
     df_in: pd.DataFrame = read_in(str(data_in))
-    SYSOUT.write(OVERWRITE + ' File read in successfully! '.ljust(50, '-') + SUCCESS)
+    SYSOUT.write(OVERWRITE + ' File read in successfully! '.ljust(44, '-') + SUCCESS)
     SYSOUT.flush()
     log.debug('Data read in successfully')
 
@@ -63,7 +65,7 @@ def main():
     SYSOUT.write(HDR + ' Scaling data...')
     SYSOUT.flush()
     df_in = scale_data(df_in)
-    SYSOUT.write(OVERWRITE + ' Data Scaling finished! '.ljust(50, '-') + SUCCESS)
+    SYSOUT.write(OVERWRITE + ' Data Scaling finished! '.ljust(44, '-') + SUCCESS)
     SYSOUT.flush()
     log.debug('Data Scaling finished')
 
@@ -72,7 +74,7 @@ def main():
     log.debug('Regression performed successfully')
 
     # * Display & Save Report * #
-    print(f"\n{banner(' Regression Report ')}")
+    print(f"\n    {banner(' Regression Report ')}")
     regression_report = regression_report.round(decimals=3)     # format the data frame
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
         print(regression_report)                                # display results
@@ -96,10 +98,11 @@ def read_in(fl: str) -> pd.DataFrame:
     data = data.replace('********', np.nan).replace(np.inf, np.nan)
     data = data.dropna(how='any', axis=1)
 
-    # * Convert the datetime/drop date col * #
-    data['date'] = pd.to_datetime(data['date'])
-    # ? converting the date doesn't seem to make it compatible
-    del data['date']  # drop the data column
+    # * Convert the Date to an Int * #
+    # ? not having a date doesn't seem to reduce accuracy
+    data["date"] = pd.to_datetime(data["date"]).dt.strftime("%Y%m%d")
+    data['date'].astype(int)
+    # del data['date']  # drop the data column
 
     # * Drop the OBS Cols (except sknt_max) * #
     # create s dataframe with every col whose name contains 'OBS'
@@ -146,9 +149,12 @@ def remove_outlier(data: pd.DataFrame) -> pd.DataFrame:
     mean: pd.DataFrame = data.mean()
 
     for c in data.columns:
-        limit = 3.0 * sd[c]  # get the limit for this col. any more & we replace it with SD
-        # replace any value in this col greater than limit with the standard deviation
-        data[c].where(np.abs(data[c] - mean[c]) < limit, mean[c], inplace=True)
+        if c == 'date':
+            pass  # don't try to remove outliers from data as that makes no sense
+        else:
+            limit = 3.0 * sd[c]  # get the limit for this col. any more & we replace it with SD
+            # replace any value in this col greater than limit with the standard deviation
+            data[c].where(np.abs(data[c] - mean[c]) < limit, mean[c], inplace=True)
 
     if type(data) != pd.DataFrame:
         printError(f'remove_outlier returned a {type(data)}')
@@ -157,10 +163,10 @@ def remove_outlier(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def reduce_data(train: pd.DataFrame, test: pd.DataFrame, bar) -> typ.Dict[str, pd.DataFrame]:
+def reduce_data(train: pd.DataFrame, test: pd.DataFrame, spnr) -> typ.Dict[str, pd.DataFrame]:
 
     # * Dimensionality Reduction * #
-    bar.text('reducing data')
+    spnr.text = 'reducing data...'
 
     # this dict will store the labels & reduced data for return
     rtn: typ.Dict[str, pd.DataFrame] = {'Train Label': train['OBS_sknt_max'],
@@ -172,35 +178,38 @@ def reduce_data(train: pd.DataFrame, test: pd.DataFrame, bar) -> typ.Dict[str, p
     # reduce the training data
     rtn['Test Data'] = pd.DataFrame(model.transform(test.drop('OBS_sknt_max', axis=1)), index=test.index)
 
+    spnr.write(success('reduction complete ---- '+u'\u2713'))
     return rtn
 
 
-def split_random(data_in: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
+def split_random(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
     # TODO: comment
-    log.debug('Random data split started')
+    log.debug('random data split started')
 
-    bar.text('splitting data')
+    spnr.text = 'splitting data...'
     train = data_in.sample(frac=0.8, random_state=SEED)  # create a df with 80% of instances
     test = data_in.drop(train.index)                     # create a df with the remaining 20%
 
+    spnr.write(success('data split complete --- '+u'\u2713'))
     return train, test
 
 
-def split_fixed(data_in: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
+def split_fixed(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
     # TODO: comment
-    log.debug('Fixed data split started')
+    log.debug('fixed data split started')
 
     num_rows: int = len(data_in.index)  # get the number of rows
     # get the number of instances to be added to the training data
     size_train: int = math.ceil(0.80 * num_rows)
 
-    bar.text('splitting data')
+    spnr.text = "splitting data..."
     # slice the dataframe [rows, cols] & grab everything up to size_train
     train: pd.DataFrame = data_in.iloc[:size_train+1, :]
     # slice the dataframe [rows, cols] & grab everything after size_train
     test: pd.DataFrame = data_in.iloc[size_train+1:, :]
 
-    log.debug('Fixed data split finished')
+    log.debug('fixed data split finished')
+    spnr.write(success('data split complete --- '+u'\u2713'))
     return train, test
 # ************************************************************** #
 
@@ -225,7 +234,7 @@ def create_report(rand: typ.Dict[str, float], fixed: typ.Dict[str, float]) -> pd
     df: pd.DataFrame = pd.DataFrame(results, columns=cols, index=rws, dtype=float)
     df.round(3)
 
-    SYSOUT.write(OVERWRITE + ' Report Generated! '.ljust(50, '-') + SUCCESS)
+    SYSOUT.write(OVERWRITE + ' Report Generated! '.ljust(44, '-') + SUCCESS)
     SYSOUT.flush()
     return df
 
@@ -319,12 +328,11 @@ def run_regression(data_in: pd.DataFrame):
     def random_data() -> typ.Dict[str, float]:
         """Perform linear regression with randomly divided data"""
         model = LinearRegression()  # create the regression model
-        bar_rand.text('model built')
 
         train: pd.DataFrame
         test: pd.DataFrame
-        train, test = split_random(data_in, bar_rand)  # randomly split dataset
-        reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, bar_rand)
+        train, test = split_random(data_in, spnr)  # randomly split dataset
+        reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, spnr)
 
         # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
         # model.fit() takes 2 parameters: X & Y (in that order)
@@ -337,10 +345,11 @@ def run_regression(data_in: pd.DataFrame):
         Y: pd.DataFrame = reduced['Train Label']
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-        bar_rand.text('training model')
+        spnr.text = 'training model...'
         model.fit(X, Y)  # fit the model using X & Y (see above)
-        bar_rand.text('model trained')
+        spnr.write(success('training complete ----- '+u'\u2713'))
 
+        spnr.text = 'getting error score...'
         # calculate the error scores
         results: typ.Dict = {
             'absolute': absolute_error(model, reduced['Test Data'], reduced['Test Label']),
@@ -348,15 +357,17 @@ def run_regression(data_in: pd.DataFrame):
             'signed': signed_error(model, reduced['Test Data'], reduced['Test Label']),
         }
 
+        spnr.write(success('error score computed -- ' + u'\u2713'))
         return results
 
     def fixed_data() -> typ.Dict[str, float]:
         """Perform linear regression with a fixed data division"""
         model = LinearRegression()  # create the regression model
-        bar_fxd.text('model built')
 
-        train, test = split_fixed(data_in, bar_fxd)  # split dataset
-        reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, bar_fxd)
+        train: pd.DataFrame
+        test: pd.DataFrame
+        train, test = split_fixed(data_in, spnr)  # split dataset
+        reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, spnr)
 
         # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
         # model.fit() takes 2 parameters: X & Y (in that order)
@@ -368,10 +379,11 @@ def run_regression(data_in: pd.DataFrame):
         Y: pd.DataFrame = reduced['Train Label']
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-        bar_fxd.text('training model')
+        spnr.text = 'training model...'
         model.fit(X, Y)  # fit the model using X & Y (see above)
-        bar_fxd.text('model trained')
+        spnr.write(success('training complete ----- '+u'\u2713'))
 
+        spnr.text = 'getting error score...'
         # calculate the error scores
         results = {
             'absolute': absolute_error(model, reduced['Test Data'], reduced['Test Label']),
@@ -379,17 +391,16 @@ def run_regression(data_in: pd.DataFrame):
             'signed': signed_error(model, reduced['Test Data'], reduced['Test Label']),
         }
 
+        spnr.write(success('error score computed -- ' + u'\u2713'))
         return results
 
-    with alive_bar(title='Regression (random split)') as bar_rand:
-        log.debug('Regression - random_data() called')
+    with yaspin(text='Starting Regression (random split)...') as spnr:
+        spnr.write('Starting Regression (random split)...')
         rand = random_data()   # run the regression with a random data split
-        log.debug('Regression - random_data() completed')
 
-    with alive_bar(title='Regression (fixed split)') as bar_fxd:
-        log.debug('Regression - fixed_data() called')
+    with yaspin(text='Starting Regression (fixed split)...') as spnr:
+        spnr.write('Starting Regression (fixed split)...')
         fixed = fixed_data()   # run the regression with a fixed data split
-        log.debug('Regression - fixed_data() completed')
 
     print(banner(' Liner Regression Finished '))
 
