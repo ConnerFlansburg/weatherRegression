@@ -15,11 +15,12 @@ import numpy as np
 import pandas as pd
 import pathlib as pth
 import typing as typ
+import matplotlib.pyplot as plt
+from collections import namedtuple
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
 # from pprint import pprint
 from formatting import banner, printError, success
-from alive_progress import alive_bar, config_handler
 from pyfiglet import Figlet
 from sklearn.linear_model import LinearRegression
 from yaspin import yaspin
@@ -36,11 +37,10 @@ SYSOUT = sys.stdout                    # SYSOUT set the standard out for the pro
 log_path = pth.Path.cwd() / 'logs' / 'log.txt'
 log.basicConfig(level=log.ERROR, filename=str(log_path), format='%(levelname)s-%(message)s')
 
-# set up the global config for the loading bars
-config_handler.set_global(spinner='dots_reverse', bar='smooth', unknown='message_scrolling', title_length=0, length=20)
-
 # set the seed for the random library
 random.seed(SEED)
+
+# TODO: figure out poison reduce
 
 
 def main():
@@ -70,16 +70,31 @@ def main():
     log.debug('Data Scaling finished')
 
     # * Preform the Linear Regression * #
-    regression_report: pd.DataFrame = run_regression(df_in)
+    report: pd.DataFrame = run_regression(df_in)
     log.debug('Regression performed successfully')
 
     # * Display & Save Report * #
     print(f"\n    {banner(' Regression Report ')}")
-    regression_report = regression_report.round(decimals=3)     # format the data frame
+    report = report.round(decimals=3)     # format the data frame
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
-        print(regression_report)                                # display results
+        print(report)                                # display results
     rOut = pth.Path.cwd() / 'output' / 'regression_report.csv'  # create file path
-    regression_report.to_csv(str(rOut))                         # save the results to a file
+    report.to_csv(str(rOut))                         # save the results to a file
+    print('')  # print newline after the report
+
+    # * Run a Poisoning Attack on the Linear Regression * #
+    report = poison_regression(df_in)
+
+    # * Display & Save Report * #
+    print(f"\n    {banner(' Poisoning Report ')}")
+    report = report.round(decimals=3)  # format the data frame
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
+        print(report)  # display results
+    rOut = pth.Path.cwd() / 'output' / 'poisoning_report.csv'  # create file path
+    report.to_csv(str(rOut))  # save the results to a file
+    print('')  # print newline after the report
+    # create scatter plot of the mean squared error rate vs number of buckets
+    scatter_plot(report, x_axis='bucket(s)', y_axis='Mean Squared Error')
 
     # * Run the Neural Network * #
     # run_network()
@@ -175,7 +190,7 @@ def reduce_data(train: pd.DataFrame, test: pd.DataFrame, spnr) -> typ.Dict[str, 
     model = PCA(n_components=0.65, svd_solver='full')  # create the model
     # fit & reduce the training data
     rtn['Train Data'] = pd.DataFrame(model.fit_transform(train.drop('OBS_sknt_max', axis=1)), index=train.index)
-    # reduce the training data
+    # reduce the test data
     rtn['Test Data'] = pd.DataFrame(model.transform(test.drop('OBS_sknt_max', axis=1)), index=test.index)
 
     spnr.write(success('reduction complete ---- '+u'\u2713'))
@@ -341,7 +356,7 @@ def run_regression(data_in: pd.DataFrame):
         # ! At this point we can't drop the col because they have no names because of reduce_data
         # perform preprocessing
         X: pd.DataFrame = reduced['Train Data']
-        # Y = the target label (OBS_sknt_max for windspeed)
+        # Y = the target label (OBS_sknt_max for wind speed)
         Y: pd.DataFrame = reduced['Train Label']
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
@@ -375,7 +390,7 @@ def run_regression(data_in: pd.DataFrame):
         # In this case it will be everything but Y
         # perform preprocessing
         X: pd.DataFrame = reduced['Train Data']
-        # Y = the target label (OBS_sknt_max for windspeed)
+        # Y = the target label (OBS_sknt_max for wind speed)
         Y: pd.DataFrame = reduced['Train Label']
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
@@ -432,6 +447,159 @@ def run_network():
 
     pass
 # ************************************************************** #
+
+
+# ************************* Poisoning ************************* #
+# TODO: change the caller of split_poison to use the new return type
+Datum = namedtuple('Datum', ['Ftrs', 'Label'])
+
+
+def split_poison(data_in: pd.DataFrame, spnr) -> typ.Tuple[typ.List[Datum], Datum]:
+    # TODO: comment
+    log.debug('fixed data split started')
+
+    num_rows: int = len(data_in.index)  # get the number of rows
+    # get the number of instances to be added to the training data
+    size_train: int = math.ceil(0.80 * num_rows)
+
+    # * Divide Data into Testing & Training Sets * #
+    spnr.text = "splitting data..."
+    # slice [inclusive : not_inclusive]
+    # slice the dataframe [rows, cols] & grab everything up to size_train
+    train: pd.DataFrame = data_in.iloc[:size_train + 1, :]
+    # slice the dataframe [rows, cols] & grab everything after size_train
+    test: pd.DataFrame = data_in.iloc[size_train + 1:, :]
+    spnr.write(success('data split complete --- ' + u'\u2713'))
+
+    # * Reduce the Data * #
+    # ? should this happen before or after the bucket split?
+    reduced = reduce_data(data_in.iloc[:size_train + 1, :], data_in.iloc[size_train + 1:, :], spnr)
+
+    # * Divide Training Data into 10 Buckets * #
+    spnr.text = 'creating buckets...'
+    # now that the data has been split into train & test, divide train into 10 buckets
+    # each bucket should get 251 examples except for the last one which will get the rest.
+    # Each bucket should contain the data from the reduced dataframe.
+    train_list: typ.List[Datum]
+
+    # ? change so that the first 'Datum' has the extra instances
+    training = [  # bucket 1  instances 0 - 251
+                Datum(Ftrs=reduced['Train Data'].iloc[:251, :], Label=train['OBS_sknt_max'].iloc[:251]),
+                  # bucket 2  instances 252 - 502
+                Datum(Ftrs=reduced['Train Data'].iloc[252:503, :], Label=train['OBS_sknt_max'].iloc[252:503]),
+                  # bucket 3  instances 502 - 753
+                Datum(Ftrs=reduced['Train Data'].iloc[503:754, :], Label=train['OBS_sknt_max'].iloc[503:754]),
+                  # bucket 4  instances 753 - 1004
+                Datum(Ftrs=reduced['Train Data'].iloc[754:1005, :], Label=train['OBS_sknt_max'].iloc[754:1005]),
+                  # bucket 5  instances 1004 - 1255
+                Datum(Ftrs=reduced['Train Data'].iloc[1005:1256, :], Label=train['OBS_sknt_max'].iloc[1005:1256]),
+                  # bucket 6  instances 1255 - 1506
+                Datum(Ftrs=reduced['Train Data'].iloc[1256:1507, :], Label=train['OBS_sknt_max'].iloc[1256:1507]),
+                  # bucket 7  instances 1506 - 1757
+                Datum(Ftrs=reduced['Train Data'].iloc[1507:1758, :], Label=train['OBS_sknt_max'].iloc[1507:1758]),
+                  # bucket 8  instances 1757 - 2008
+                Datum(Ftrs=reduced['Train Data'].iloc[1758:2009, :], Label=train['OBS_sknt_max'].iloc[1758:2009]),
+                  # bucket 9  instances 2008 - 2259
+                Datum(Ftrs=reduced['Train Data'].iloc[2009:2260, :], Label=train['OBS_sknt_max'].iloc[2009:2260]),
+                  # bucket 10 instances 2259 - end
+                Datum(Ftrs=reduced['Train Data'].iloc[2260:, :], Label=train['OBS_sknt_max'].iloc[2260:])
+    ]
+
+    # create the testing tuple using the reduced datset & the original label
+    testing = Datum(Ftrs=reduced['Test Data'], Label=test['OBS_sknt_max'])
+
+    log.debug('fixed data split finished')
+    spnr.write(success('bucket split complete '.ljust(23, '-') + u' \u2713'))
+    return training, testing
+
+
+def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
+    """
+    poison_regression will run a simple linear regression on the passed dataframe
+    & poison the training data.
+    """
+    print(banner(' Poisoning Liner Regression '))
+    data_in: pd.DataFrame = pd.DataFrame(data_in)
+
+    def poison_data(test: Datum, train_list: typ.List[Datum]) -> pd.DataFrame:
+        """Perform linear regression with poisoned data"""
+        model = LinearRegression()  # create the regression model
+
+        spnr.text = 'joining dataframes...'
+        # create a single dataframe from the list of Datum tuples
+        train: pd.DataFrame = pd.concat([df.Ftrs for df in train_list])
+        # the training data is now joined into a single data frame
+        # now do the same for the training labels
+        labels: pd.DataFrame = pd.concat([df.Label for df in train_list])
+
+        # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
+        # model.fit() takes 2 parameters: X & Y (in that order)
+        # X = the labels we suspect are correlated
+        # In this case it will be everything but Y
+        X: pd.DataFrame = train
+        # Y = the target label (OBS_sknt_max for wind speed)
+        Y: pd.DataFrame = labels
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+        spnr.text = 'training model...'
+        model.fit(X, Y)  # fit the model using X & Y (see above)
+
+        spnr.text = 'getting error score...'
+        # calculate the error scores
+
+        # name the columns for this instance
+        cols: typ.List[str] = ['bucket(s)',  'Mean Absolute Error',
+                               'Mean Squared Error', 'Mean Signed Error']
+
+        # get the data for the dataframe (should have the 3 error scores for this instance)
+        results: np.array = np.array([[len(train_list),
+                                       absolute_error(model, test.Ftrs, test.Label),
+                                       squared_error(model, test.Ftrs, test.Label),
+                                       signed_error(model, test.Ftrs, test.Label)]],
+                                     dtype=float)
+
+        # create a dataframe of the result metrics
+        df: pd.DataFrame = pd.DataFrame(results, columns=cols, dtype=float)
+        df.round(3)
+
+        return df
+
+    with yaspin(text='Starting Regression (poisoned)...') as spnr:
+        spnr.write('Starting Regression (poisoned)...')
+        training: typ.List[Datum]
+        testing: Datum
+        training, testing = split_poison(data_in, spnr)            # split the data into test & train buckets
+        # preprocessing is done, train the models
+        # create an empty dataframe to hold the error scores
+        errs: typ.List[pd.DataFrame] = []
+        while training:  # while train_list still has training data,
+            # train the regression using what's left of train_list, & add results to errs list
+            errs.append(poison_data(testing, training))
+            training.pop()  # remove the last item from the training data
+            spnr.write(success(f'model {len(errs)}/10 complete '.ljust(23, '-') + u' \u2713'))
+
+    report = pd.concat(errs)  # transform the list of frames into a single frame
+
+    print(banner(' Poisoning Finished '))
+    return report
+
+
+def scatter_plot(df: pd.DataFrame, x_axis: str, y_axis: str):
+    # TODO: create graph
+
+    # scatter plot
+    df.plot(kind='scatter',
+            x=x_axis,
+            y=y_axis,
+            color='red')
+
+    # set the title
+    plt.title('ScatterPlot')
+
+    # show the plot
+    plt.show()
+
+    pass
 
 
 if __name__ == '__main__':
