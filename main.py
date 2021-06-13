@@ -40,8 +40,6 @@ log.basicConfig(level=log.ERROR, filename=str(log_path), format='%(levelname)s-%
 # set the seed for the random library
 random.seed(SEED)
 
-# TODO: figure out poison reduce
-
 
 def main():
 
@@ -75,29 +73,28 @@ def main():
 
     # * Display & Save Report * #
     print(f"\n    {banner(' Regression Report ')}")
-    report = report.round(decimals=3)     # format the data frame
+    report = report.round(decimals=3)                           # format the data frame
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
-        print(report)                                # display results
+        print(report)                                           # display results
     rOut = pth.Path.cwd() / 'output' / 'regression_report.csv'  # create file path
-    report.to_csv(str(rOut))                         # save the results to a file
-    print('')  # print newline after the report
+    report.to_csv(str(rOut))                                    # save the results to a file
+    print('')                                                   # print newline after the report
 
     # * Run a Poisoning Attack on the Linear Regression * #
     report = poison_regression(df_in)
 
     # * Display & Save Report * #
     print(f"\n    {banner(' Poisoning Report ')}")
-    report = report.round(decimals=3)  # format the data frame
+    report = report.round(decimals=3)                          # format the data frame
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
-        print(report)  # display results
+        print(report)                                          # display results
     rOut = pth.Path.cwd() / 'output' / 'poisoning_report.csv'  # create file path
-    report.to_csv(str(rOut))  # save the results to a file
-    print('')  # print newline after the report
-    # create scatter plot of the mean squared error rate vs number of buckets
-    scatter_plot(report, x_axis='bucket(s)', y_axis='Mean Squared Error')
+    report.to_csv(str(rOut))                                   # save the results to a file
+    print('')                                                  # print newline after the report
 
-    # * Run the Neural Network * #
-    # run_network()
+    # create scatter plot of the mean squared error rate vs number of buckets
+    scatter_plot(report, x_axis='Bucket(s)', y_axis='Mean Squared Error',
+                 title='Poisoned Regression', file=str(pth.Path.cwd() / 'output' / 'poison_scatter.png'))
 
     log.debug('Program completed successfully')
 
@@ -548,7 +545,7 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
         # calculate the error scores
 
         # name the columns for this instance
-        cols: typ.List[str] = ['bucket(s)',  'Mean Absolute Error',
+        cols: typ.List[str] = ['Bucket(s)',  'Mean Absolute Error',
                                'Mean Squared Error', 'Mean Signed Error']
 
         # get the data for the dataframe (should have the 3 error scores for this instance)
@@ -584,22 +581,54 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
     return report
 
 
-def scatter_plot(df: pd.DataFrame, x_axis: str, y_axis: str):
-    # TODO: create graph
+def scatter_plot(df: pd.DataFrame, x_axis: str, y_axis, title: str, file: str):
+    # TODO: comment
 
     # scatter plot
-    df.plot(kind='scatter',
-            x=x_axis,
-            y=y_axis,
-            color='red')
+    df.plot(
+        kind='scatter',  # the kind of plot to make
+        title=title,     # set the plots title
+        x=x_axis,
+        y=y_axis,
+        color='black',   # the color of the points on the plot
+        # xlabel=x_axis,   # the text label for the x axis
+        # ylabel=y_axis,   # the text label for the x axis
+        legend=True,     # should the legend be displayed (False=No, True=Yes)
+        # subplots=True,   # Make separate subplots for each column
+        use_index=True,  # Use the dataframe's index as the ticks for x axis.
+    )
 
-    # set the title
-    plt.title('ScatterPlot')
-
+    # save the plot to the provided file path
+    plt.savefig(file)
     # show the plot
     plt.show()
 
-    pass
+    return
+
+
+def line_plot(df: pd.DataFrame, x_axis: str, y_axis, title: str, file: str):
+    # TODO: comment
+
+    # scatter plot
+    df.plot(
+        kind='line',  # the kind of plot to make
+        title=title,     # set the plots title
+        x=x_axis,
+        y=y_axis,
+        color='black',   # the color of the points on the plot
+        # xlabel=x_axis,   # the text label for the x axis
+        # ylabel=y_axis,   # the text label for the x axis
+        legend=True,     # should the legend be displayed (False=No, True=Yes)
+        # subplots=True,   # Make separate subplots for each column
+        use_index=True,  # Use the dataframe's index as the ticks for x axis.
+    )
+
+    # save the plot to the provided file path
+    plt.savefig(file)
+    # show the plot
+    plt.show()
+
+    return
 
 
 if __name__ == '__main__':
