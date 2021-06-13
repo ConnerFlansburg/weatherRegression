@@ -195,7 +195,16 @@ def reduce_data(train: pd.DataFrame, test: pd.DataFrame, spnr) -> typ.Dict[str, 
 
 
 def split_random(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
-    # TODO: comment
+    """
+    split_random will randomly split the provided Pandas dataframe into testing & training data
+    (using SEED as the seed value).
+
+    :param data_in: dataframe to be split
+    :param spnr: spinner used for console printing
+
+    :return: dataframes for train & test (in that order)
+    """
+
     log.debug('random data split started')
 
     spnr.text = 'splitting data...'
@@ -207,7 +216,16 @@ def split_random(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.Data
 
 
 def split_fixed(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
-    # TODO: comment
+    """
+    split_fixed will split the provided Pandas dataframe into testing & training data
+    using the first 80% of the entries as training, and the rest as testing.
+
+    :param data_in: dataframe to be split
+    :param spnr: spinner used for console printing
+
+    :return: dataframes for train & test (in that order)
+    """
+
     log.debug('fixed data split started')
 
     num_rows: int = len(data_in.index)  # get the number of rows
@@ -228,8 +246,16 @@ def split_fixed(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataF
 
 # *************************** REPORT *************************** #
 def create_report(rand: typ.Dict[str, float], fixed: typ.Dict[str, float]) -> pd.DataFrame:
+    """
+    create_report will used the provided values to create a dataframe containing
+    information on the error scores of the fixed & random linear regression models.
 
-    # TODO: expand this to work with Neural Network after it's added
+    :param rand: dictionary with the error scores for the rand model
+    :param fixed: dictionary with the error scores for the fixed model
+
+
+    :return: dataframes for train & test (in that order)
+    """
 
     SYSOUT.write(HDR + ' Generating Report...')
     SYSOUT.flush()
@@ -420,39 +446,26 @@ def run_regression(data_in: pd.DataFrame):
     report: pd.DataFrame = create_report(rand, fixed)
 
     return report
-
-
-def run_network():
-
-    # TODO: create neural network model
-
-    def random_data():
-        # TODO: used random data split
-        pass
-
-    def fixed_data():
-        # TODO: use fixed data split
-        pass
-
-    # TODO: Split the Data Randomly
-    # TODO: Run the Network
-    # create_report()
-
-    # TODO: Split the Data by Location in File
-    # TODO: Run the Network
-    # create_report()
-
-    pass
 # ************************************************************** #
 
 
 # ************************* Poisoning ************************* #
-# TODO: change the caller of split_poison to use the new return type
 Datum = namedtuple('Datum', ['Ftrs', 'Label'])
 
 
 def split_poison(data_in: pd.DataFrame, spnr) -> typ.Tuple[typ.List[Datum], Datum]:
-    # TODO: comment
+    """
+    split_poison will split the provided Pandas dataframe into testing & training data
+    using the first 80% of the entries as training, and the rest as testing.
+    This should method should only be used during poisoning attacks
+
+    :param data_in: dataframe to be split
+    :param spnr: spinner used for console printing
+
+    :return: dataframes for train & test (in that order)
+    """
+
+
     log.debug('fixed data split started')
 
     num_rows: int = len(data_in.index)  # get the number of rows
@@ -582,7 +595,10 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
 
 
 def scatter_plot(df: pd.DataFrame, x_axis: str, y_axis, title: str, file: str):
-    # TODO: comment
+    """
+    scatter_plot creates a scatter plot of the dataframe using
+    Pandas libraries.
+    """
 
     # scatter plot
     df.plot(
@@ -607,7 +623,10 @@ def scatter_plot(df: pd.DataFrame, x_axis: str, y_axis, title: str, file: str):
 
 
 def line_plot(df: pd.DataFrame, x_axis: str, y_axis, title: str, file: str):
-    # TODO: comment
+    """
+    line_plot creates a line plot of the dataframe using
+    Pandas libraries.
+    """
 
     # scatter plot
     df.plot(
