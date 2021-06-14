@@ -93,8 +93,9 @@ def main():
     print('')                                                  # print newline after the report
 
     # create scatter plot of the mean squared error rate vs number of buckets
-    scatter_plot(report, x_axis='Bucket(s)', y_axis='Mean Squared Error',
-                 title='Poisoned Regression', file=str(pth.Path.cwd() / 'output' / 'poison_scatter.png'))
+    # scatter_plot(report, x_axis='Bucket(s)', y_axis='Mean Squared Error', title='Poisoned Regression', file=str(pth.Path.cwd() / 'output' / 'poison_scatter.png'))
+
+    error_plot(report, str(pth.Path.cwd() / 'output' / 'poison_line.png'))
 
     log.debug('Program completed successfully')
 
@@ -330,9 +331,9 @@ def squared_error(model, data, label) -> float:
     num_instances = len(actual)  # the number of examples in the test set
 
     # ! for debugging, print prediction to file
-    rst = list(zip(prediction, actual))
-    df = pd.DataFrame(rst, columns=['Prediction', 'Actual'])
-    df.to_csv(str(pth.Path.cwd() / 'logs' / 'predict.csv'))
+    # rst = list(zip(prediction, actual))
+    # df = pd.DataFrame(rst, columns=['Prediction', 'Actual'])
+    # df.to_csv(str(pth.Path.cwd() / 'logs' / 'predict.csv'))
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
     if len(prediction) != len(actual):  # check that both are equal
@@ -641,6 +642,107 @@ def line_plot(df: pd.DataFrame, x_axis: str, y_axis, title: str, file: str):
         # subplots=True,   # Make separate subplots for each column
         use_index=True,  # Use the dataframe's index as the ticks for x axis.
     )
+
+    # save the plot to the provided file path
+    plt.savefig(file)
+    # show the plot
+    plt.show()
+
+    return
+
+
+def grid_plot(df: pd.DataFrame, file: str):
+    """
+    scatter_plot creates a scatter plot of the dataframe using
+    Pandas libraries.
+    """
+
+    # TODO: make it display more values along the y axis
+    # create the figure that will hold all 4 plots
+    fig, axes = plt.subplots(nrows=3, ncols=1)
+
+    # create the plot & place it in the upper left corner
+    df.plot(ax=axes[0],
+            kind='line',
+            x='Bucket(s)',
+            y='Mean Absolute Error',
+            color='blue',
+            style='--',  # the line style
+            legend=True)
+    # axes[0].set_title('Mean Absolute Error')
+
+    # create the plot & place it in the upper right corner
+    df.plot(ax=axes[1],
+            kind='line',
+            x='Bucket(s)',
+            y='Mean Squared Error',
+            color='red',
+            style='-.',  # the line style
+            legend=True)
+    # axes[1].set_title('Mean Squared Error')
+
+    # create the plot & place it in the lower left corner
+    df.plot(ax=axes[2],
+            kind='line',
+            x='Bucket(s)',
+            y='Mean Signed Error',
+            style='-',  # the line style
+            color='green',
+            legend=True)
+    # axes[2].set_title('Mean Signed Error')
+
+    # save the plot to the provided file path
+    plt.savefig(file)
+    # show the plot
+    plt.show()
+
+    return
+
+
+def error_plot(df: pd.DataFrame, file: str):
+    """
+    error_plot creates a line plot of the report dataframe using
+    Pandas libraries, & plots all 3 error scores on the same figure.
+    """
+
+    # get the axes so the plots can be made on the same figure
+    ax = plt.gca()
+    # set the values for the 'Bucket(s)' axis
+    ax.set_xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    ax.set_ylabel('Error Score')  # label the y-axis
+
+    # plot the mean absolute error
+    df.plot(ax=ax,
+            kind='line',
+            x='Bucket(s)',
+            y='Mean Absolute Error',
+            color='blue',
+            style='--',  # the line style
+            x_compat=True,
+            use_index=True,
+            legend=True)
+
+    # plot the mean squared error
+    df.plot(ax=ax,
+            kind='line',
+            x='Bucket(s)',
+            y='Mean Squared Error',
+            color='red',
+            style='-.',  # the line style
+            x_compat=True,
+            use_index=True,
+            legend=True)
+
+    # plot the mean signed error
+    df.plot(ax=ax,
+            kind='line',
+            x='Bucket(s)',
+            y='Mean Signed Error',
+            style=':',  # the line style
+            x_compat=True,
+            color='green',
+            use_index=True,
+            legend=True)
 
     # save the plot to the provided file path
     plt.savefig(file)
