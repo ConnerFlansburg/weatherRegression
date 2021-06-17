@@ -18,7 +18,7 @@ def printWarn(message: str):
 
     :rtype: str
     """
-    print(f"\033[33m {message}\033[00m")
+    print(f"\033[33m{message}\033[00m")
 
 
 def printSuccess(message: str):
@@ -41,7 +41,7 @@ def printError(message: str):
     :return: printError does not return, but rather prints to the console.
     :rtype: None
     """
-    print("\033[91;1m {}\033[00m".format(message))
+    print(f"\033[91;1m{message}\033[00m")
 
 
 def printPercentage(decimalScore: float) -> str:

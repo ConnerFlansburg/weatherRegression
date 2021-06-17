@@ -9,36 +9,65 @@ Github Repo:
 import sys
 import math
 import random
+import argparse
 # import traceback
 import logging as log
+import traceback
+
 import numpy as np
 import pandas as pd
 import pathlib as pth
 import typing as typ
 import matplotlib.pyplot as plt
-from collections import namedtuple
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
 # from pprint import pprint
-from formatting import banner, printError, success
+from formatting import banner, printError, success, printWarn
 from pyfiglet import Figlet
 from sklearn.linear_model import LinearRegression
+from sklearn.utils import shuffle
 from yaspin import yaspin
 
 
-SEED: int = 368
-HDR = '*' * 6
-SUCCESS = u' \u2713\n'+'\033[0m'       # print the checkmark & reset text color
-OVERWRITE = '\r' + '\033[32;1m' + HDR  # overwrite previous text & set the text color to green
-NO_OVERWRITE = '\033[32;1m' + HDR      # NO_OVERWRITE colors lines green that don't use overwrite
-SYSOUT = sys.stdout                    # SYSOUT set the standard out for the program to the console
+# ******************************************** Parsing Command Line Flags ******************************************** #
+# these values will be used if none are passed
+Buckets_Num: int = 10        # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
+seed: int = 368              # SEED is used as the seed value for random number generation
 
-# Set up the logger
+argumentParser = argparse.ArgumentParser()  # create the argument parser
+
+# Run Standard Regression Flag
+argumentParser.add_argument("-stdr", "--standard-regress",  # the command line flag
+                            action='store_true',            # if the value is true, store it in dest
+                            dest='regress',                 # the value will be stored in RUN_STND_RGRS
+                            required=False,                 # the flag is not required
+                            default=False,                  # if the flag is not provided, than it will be set to false
+                            help="run the standard regression without poisoning"
+                            )
+
+# Number of Buckets Flag
+argumentParser.add_argument("-b", "--buckets",              # the command line flag
+                            action='store',                 # if the value is true, store it in dest
+                            dest='bNum',                    # the value will be stored in BUCKETS_NUM
+                            required=False,                 # the flag is not required
+                            default=Buckets_Num,            # if the flag is not provided, use Buckets_Num
+                            type=int,                       # cast the input so that it's an integer
+                            help=f"the number of buckets used in poisoning (defaults to {Buckets_Num})"
+                            )
+
+# Random Seed Flag
+argumentParser.add_argument("-s", "--seed",                 # the command line flag
+                            action='store',                 # if the value is true, store it in dest
+                            dest='sd',                      # the value will be stored in BUCKETS_NUM
+                            required=False,                 # the flag is not required
+                            default=seed,                   # if the flag is not provided, use Buckets_Num
+                            type=int,                       # cast the input so that it's an integer
+                            help=f"the number of buckets used in poisoning (defaults to {Buckets_Num})"
+                            )
+# ************************************************ Set up the logger ************************************************* #
 log_path = pth.Path.cwd() / 'logs' / 'log.txt'
 log.basicConfig(level=log.ERROR, filename=str(log_path), format='%(levelname)s-%(message)s')
-
-# set the seed for the random library
-random.seed(SEED)
+# ******************************************************************************************************************** #
 
 
 def main():
@@ -52,33 +81,30 @@ def main():
     data_in = pth.Path.cwd() / 'data' / 'kdfw_processed_data.csv'  # create a Path object
 
     # * Read in the Data * #
-    SYSOUT.write(HDR + ' Reading in file...')
-    SYSOUT.flush()
+    SYSOUT.write(HDR + ' Reading in file...'); SYSOUT.flush()
     df_in: pd.DataFrame = read_in(str(data_in))
-    SYSOUT.write(OVERWRITE + ' File read in successfully! '.ljust(44, '-') + SUCCESS)
-    SYSOUT.flush()
+    SYSOUT.write(OVERWRITE + ' File read in successfully! '.ljust(44, '-') + SUCCESS); SYSOUT.flush()
     log.debug('Data read in successfully')
 
     # * Preprocess Data * #
-    SYSOUT.write(HDR + ' Scaling data...')
-    SYSOUT.flush()
+    SYSOUT.write(HDR + ' Scaling data...'); SYSOUT.flush()
     df_in = scale_data(df_in)
-    SYSOUT.write(OVERWRITE + ' Data Scaling finished! '.ljust(44, '-') + SUCCESS)
-    SYSOUT.flush()
+    SYSOUT.write(OVERWRITE + ' Data Scaling finished! '.ljust(44, '-') + SUCCESS); SYSOUT.flush()
     log.debug('Data Scaling finished')
 
-    # * Preform the Linear Regression * #
-    report: pd.DataFrame = run_regression(df_in)
-    log.debug('Regression performed successfully')
+    # * Preform the Standard Linear Regression * #
+    if RUN_STND_RGRS:  # if param RUN_STND_RGRS (run standard regression) is true, execute
+        report: pd.DataFrame = run_regression(df_in)
+        log.debug('Regression performed successfully')
 
-    # * Display & Save Report * #
-    print(f"\n    {banner(' Regression Report ')}")
-    report = report.round(decimals=3)                           # format the data frame
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
-        print(report)                                           # display results
-    rOut = pth.Path.cwd() / 'output' / 'regression_report.csv'  # create file path
-    report.to_csv(str(rOut))                                    # save the results to a file
-    print('')                                                   # print newline after the report
+        # * Display & Save Standard Linear Regression Report * #
+        print(f"\n    {banner(' Regression Report ')}")
+        report = report.round(decimals=3)                           # format the data frame
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
+            print(report)                                           # display results
+        rOut = pth.Path.cwd() / 'output' / 'regression_report.csv'  # create file path
+        report.to_csv(str(rOut))                                    # save the results to a file
+        print('')                                                   # print newline after the report
 
     # * Run a Poisoning Attack on the Linear Regression * #
     report = poison_regression(df_in)
@@ -258,8 +284,7 @@ def create_report(rand: typ.Dict[str, float], fixed: typ.Dict[str, float]) -> pd
     :return: dataframes for train & test (in that order)
     """
 
-    SYSOUT.write(HDR + ' Generating Report...')
-    SYSOUT.flush()
+    SYSOUT.write(HDR + ' Generating Report...'); SYSOUT.flush()
 
     cols: typ.List[str] = ['Regression (random)', 'Regression (fixed)']
     rws: typ.List[str] = ['Mean Absolute Error', 'Mean Squared Error', 'Mean Signed Error']
@@ -273,8 +298,7 @@ def create_report(rand: typ.Dict[str, float], fixed: typ.Dict[str, float]) -> pd
     df: pd.DataFrame = pd.DataFrame(results, columns=cols, index=rws, dtype=float)
     df.round(3)
 
-    SYSOUT.write(OVERWRITE + ' Report Generated! '.ljust(44, '-') + SUCCESS)
-    SYSOUT.flush()
+    SYSOUT.write(OVERWRITE + ' Report Generated! '.ljust(44, '-') + SUCCESS); SYSOUT.flush()
     return df
 
 
@@ -451,25 +475,23 @@ def run_regression(data_in: pd.DataFrame):
 
 
 # ************************* Poisoning ************************* #
-Datum = namedtuple('Datum', ['Ftrs', 'Label'])
-
-
-def split_poison(data_in: pd.DataFrame, spnr) -> typ.Tuple[typ.List[Datum], Datum]:
+def split_poison(data: pd.DataFrame, spnr) -> typ.Tuple[typ.List[pd.DataFrame], pd.DataFrame]:
     """
     split_poison will split the provided Pandas dataframe into testing & training data
     using the first 80% of the entries as training, and the rest as testing.
     This should method should only be used during poisoning attacks
 
-    :param data_in: dataframe to be split
+    :param data: dataframe to be split
     :param spnr: spinner used for console printing
 
     :return: dataframes for train & test (in that order)
     """
 
-
     log.debug('fixed data split started')
 
-    num_rows: int = len(data_in.index)  # get the number of rows
+    data = shuffle(data)  # randomly reorganize the dataframe befor splitting it
+
+    num_rows: int = len(data.index)  # get the number of rows
     # get the number of instances to be added to the training data
     size_train: int = math.ceil(0.80 * num_rows)
 
@@ -477,47 +499,17 @@ def split_poison(data_in: pd.DataFrame, spnr) -> typ.Tuple[typ.List[Datum], Datu
     spnr.text = "splitting data..."
     # slice [inclusive : not_inclusive]
     # slice the dataframe [rows, cols] & grab everything up to size_train
-    train: pd.DataFrame = data_in.iloc[:size_train + 1, :]
+    train: pd.DataFrame = data.iloc[:size_train + 1, :]
     # slice the dataframe [rows, cols] & grab everything after size_train
-    test: pd.DataFrame = data_in.iloc[size_train + 1:, :]
+    testing: pd.DataFrame = data.iloc[size_train + 1:, :]
     spnr.write(success('data split complete --- ' + u'\u2713'))
-
-    # * Reduce the Data * #
-    # ? should this happen before or after the bucket split?
-    reduced = reduce_data(data_in.iloc[:size_train + 1, :], data_in.iloc[size_train + 1:, :], spnr)
 
     # * Divide Training Data into 10 Buckets * #
     spnr.text = 'creating buckets...'
-    # now that the data has been split into train & test, divide train into 10 buckets
-    # each bucket should get 251 examples except for the last one which will get the rest.
-    # Each bucket should contain the data from the reduced dataframe.
-    train_list: typ.List[Datum]
-
-    # ? change so that the first 'Datum' has the extra instances
-    training = [  # bucket 1  instances 0 - 251
-                Datum(Ftrs=reduced['Train Data'].iloc[:251, :], Label=train['OBS_sknt_max'].iloc[:251]),
-                  # bucket 2  instances 252 - 502
-                Datum(Ftrs=reduced['Train Data'].iloc[252:503, :], Label=train['OBS_sknt_max'].iloc[252:503]),
-                  # bucket 3  instances 502 - 753
-                Datum(Ftrs=reduced['Train Data'].iloc[503:754, :], Label=train['OBS_sknt_max'].iloc[503:754]),
-                  # bucket 4  instances 753 - 1004
-                Datum(Ftrs=reduced['Train Data'].iloc[754:1005, :], Label=train['OBS_sknt_max'].iloc[754:1005]),
-                  # bucket 5  instances 1004 - 1255
-                Datum(Ftrs=reduced['Train Data'].iloc[1005:1256, :], Label=train['OBS_sknt_max'].iloc[1005:1256]),
-                  # bucket 6  instances 1255 - 1506
-                Datum(Ftrs=reduced['Train Data'].iloc[1256:1507, :], Label=train['OBS_sknt_max'].iloc[1256:1507]),
-                  # bucket 7  instances 1506 - 1757
-                Datum(Ftrs=reduced['Train Data'].iloc[1507:1758, :], Label=train['OBS_sknt_max'].iloc[1507:1758]),
-                  # bucket 8  instances 1757 - 2008
-                Datum(Ftrs=reduced['Train Data'].iloc[1758:2009, :], Label=train['OBS_sknt_max'].iloc[1758:2009]),
-                  # bucket 9  instances 2008 - 2259
-                Datum(Ftrs=reduced['Train Data'].iloc[2009:2260, :], Label=train['OBS_sknt_max'].iloc[2009:2260]),
-                  # bucket 10 instances 2259 - end
-                Datum(Ftrs=reduced['Train Data'].iloc[2260:, :], Label=train['OBS_sknt_max'].iloc[2260:])
-    ]
-
-    # create the testing tuple using the reduced datset & the original label
-    testing = Datum(Ftrs=reduced['Test Data'], Label=test['OBS_sknt_max'])
+    # break the training data into BUCKETS_NUM number of smaller dataframes
+    # with about the same number of instance in each
+    spam: typ.List[np.ndarray] = np.array_split(train.to_numpy(), BUCKETS_NUM)
+    training: typ.List[pd.DataFrame] = [pd.DataFrame(a, columns=train.columns) for a in spam]
 
     log.debug('fixed data split finished')
     spnr.write(success('bucket split complete '.ljust(23, '-') + u' \u2713'))
@@ -532,41 +524,41 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
     print(banner(' Poisoning Liner Regression '))
     data_in: pd.DataFrame = pd.DataFrame(data_in)
 
-    def poison_data(test: Datum, train_list: typ.List[Datum]) -> pd.DataFrame:
+    def poison_data(test: pd.DataFrame, train_list: typ.List[pd.DataFrame]) -> pd.DataFrame:
         """Perform linear regression with poisoned data"""
         model = LinearRegression()  # create the regression model
 
         spnr.text = 'joining dataframes...'
-        # create a single dataframe from the list of Datum tuples
-        train: pd.DataFrame = pd.concat([df.Ftrs for df in train_list])
-        # the training data is now joined into a single data frame
-        # now do the same for the training labels
-        labels: pd.DataFrame = pd.concat([df.Label for df in train_list])
+        # create a single dataframe from the list of dataframes
+        train: pd.DataFrame = pd.concat(train_list)
+        # BUCKETS_LABEL is used to save the number of instances used for each iteration,
+        # so add to it here.
+        global BUCKETS_LABEL
+        BUCKETS_LABEL.append(len(train.index))
 
         # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
         # model.fit() takes 2 parameters: X & Y (in that order)
         # X = the labels we suspect are correlated
         # In this case it will be everything but Y
-        X: pd.DataFrame = train
+        X: pd.DataFrame = train.drop('OBS_sknt_max', axis=1)
         # Y = the target label (OBS_sknt_max for wind speed)
-        Y: pd.DataFrame = labels
+        Y: pd.DataFrame = train['OBS_sknt_max']
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
         spnr.text = 'training model...'
         model.fit(X, Y)  # fit the model using X & Y (see above)
 
+        # * Calculate the Error Scores * #
         spnr.text = 'getting error score...'
-        # calculate the error scores
 
         # name the columns for this instance
-        cols: typ.List[str] = ['Bucket(s)',  'Mean Absolute Error',
-                               'Mean Squared Error', 'Mean Signed Error']
+        cols: typ.List[str] = ['Bucket(s)',  'Mean Absolute Error', 'Mean Squared Error', 'Mean Signed Error']
 
         # get the data for the dataframe (should have the 3 error scores for this instance)
         results: np.array = np.array([[len(train_list),
-                                       absolute_error(model, test.Ftrs, test.Label),
-                                       squared_error(model, test.Ftrs, test.Label),
-                                       signed_error(model, test.Ftrs, test.Label)]],
+                                       absolute_error(model, test.drop('OBS_sknt_max', axis=1), test['OBS_sknt_max']),
+                                       squared_error(model, test.drop('OBS_sknt_max', axis=1), test['OBS_sknt_max']),
+                                       signed_error(model, test.drop('OBS_sknt_max', axis=1), test['OBS_sknt_max'])]],
                                      dtype=float)
 
         # create a dataframe of the result metrics
@@ -577,8 +569,8 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
 
     with yaspin(text='Starting Regression (poisoned)...') as spnr:
         spnr.write('Starting Regression (poisoned)...')
-        training: typ.List[Datum]
-        testing: Datum
+        training: typ.List[pd.DataFrame]
+        testing: pd.DataFrame
         training, testing = split_poison(data_in, spnr)            # split the data into test & train buckets
         # preprocessing is done, train the models
         # create an empty dataframe to hold the error scores
@@ -593,62 +585,6 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
 
     print(banner(' Poisoning Finished '))
     return report
-
-
-def scatter_plot(df: pd.DataFrame, x_axis: str, y_axis, title: str, file: str):
-    """
-    scatter_plot creates a scatter plot of the dataframe using
-    Pandas libraries.
-    """
-
-    # scatter plot
-    df.plot(
-        kind='scatter',  # the kind of plot to make
-        title=title,     # set the plots title
-        x=x_axis,
-        y=y_axis,
-        color='black',   # the color of the points on the plot
-        # xlabel=x_axis,   # the text label for the x axis
-        # ylabel=y_axis,   # the text label for the x axis
-        legend=True,     # should the legend be displayed (False=No, True=Yes)
-        # subplots=True,   # Make separate subplots for each column
-        use_index=True,  # Use the dataframe's index as the ticks for x axis.
-    )
-
-    # save the plot to the provided file path
-    plt.savefig(file)
-    # show the plot
-    plt.show()
-
-    return
-
-
-def line_plot(df: pd.DataFrame, x_axis: str, y_axis, title: str, file: str):
-    """
-    line_plot creates a line plot of the dataframe using
-    Pandas libraries.
-    """
-
-    # scatter plot
-    df.plot(
-        kind='line',  # the kind of plot to make
-        title=title,     # set the plots title
-        x=x_axis,
-        y=y_axis,
-        color='black',   # the color of the points on the plot
-        # xlabel=x_axis,   # the text label for the x axis
-        # ylabel=y_axis,   # the text label for the x axis
-        legend=True,     # should the legend be displayed (False=No, True=Yes)
-        # subplots=True,   # Make separate subplots for each column
-        use_index=True,  # Use the dataframe's index as the ticks for x axis.
-    )
-
-    # save the plot to the provided file path
-    plt.savefig(file)
-    # show the plot
-    plt.show()
-
-    return
 
 
 def grid_plot(df: pd.DataFrame, file: str):
@@ -708,7 +644,7 @@ def error_plot(df: pd.DataFrame, file: str):
     # get the axes so the plots can be made on the same figure
     ax = plt.gca()
     # set the values for the 'Bucket(s)' axis
-    ax.set_xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    ax.set_xticks(BUCKETS_LABEL)
     ax.set_ylabel('Error Score')  # label the y-axis
 
     # plot the mean absolute error
@@ -720,6 +656,7 @@ def error_plot(df: pd.DataFrame, file: str):
             style='--',  # the line style
             x_compat=True,
             use_index=True,
+            grid=True,
             legend=True)
 
     # plot the mean squared error
@@ -731,6 +668,7 @@ def error_plot(df: pd.DataFrame, file: str):
             style='-.',  # the line style
             x_compat=True,
             use_index=True,
+            grid=True,
             legend=True)
 
     # plot the mean signed error
@@ -742,6 +680,7 @@ def error_plot(df: pd.DataFrame, file: str):
             x_compat=True,
             color='green',
             use_index=True,
+            grid=True,
             legend=True)
 
     # save the plot to the provided file path
@@ -754,5 +693,45 @@ def error_plot(df: pd.DataFrame, file: str):
 
 if __name__ == '__main__':
     log.debug('Starting...')
+
+    # *** Set the Program's Parameters & Constants *** #
+    # (we are not inside a function so the global keyword isn't needed) #
+    usr_in = argumentParser.parse_args()  # grab the input flags
+
+    BUCKETS_NUM = usr_in.bNum       # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
+    RUN_STND_RGRS = usr_in.regress  # RUN_STND_RGRS tells the program if the standard regression (no poison) should run
+    SEED = usr_in.sd                # SEED is used as the seed value for random number generation
+    BUCKETS_LABEL = []              # BUCKETS_LABEL is used to label the x-axis of the error score plot
+
+    # *** Seed the Random Libraries Using the Provided Seed Value *** #
+    random.seed(SEED)
+    np.random.seed(SEED)
+
+    # *** Used for Printing *** #
+    HDR = '*' * 6
+    SUCCESS = u' \u2713\n' + '\033[0m'     # print the checkmark & reset text color
+    OVERWRITE = '\r' + '\033[32;1m' + HDR  # overwrite previous text & set the text color to green
+    NO_OVERWRITE = '\033[32;1m' + HDR      # NO_OVERWRITE colors lines green that don't use overwrite
+    SYSOUT = sys.stdout                    # SYSOUT set the standard out for the program to the console
+
     main()
     log.debug('closing...\n')
+
+
+'''
+Generic Exception Handler (because I kept needing to look it up):
+    except Exception as err:
+        # * Print Error Info * #
+        printWarn(traceback.format_exc())
+        
+        # * Get Line Number * #
+        lineNm = sys.exc_info()[-1].tb_lineno  # print line number error occurred on
+        printError(f'Error encountered on line {lineNm}\nMessage: {repr(err)}')
+        log.error(f'Error encountered on line {lineNm} \nMessage: {repr(err)}')
+        
+        # * Print Debug Info * #
+        # printWarn(f'Some value: {that value}')
+
+        # * End Program * #
+        sys.exit(-1)  # recovery impossible, exit
+'''
