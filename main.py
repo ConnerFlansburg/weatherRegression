@@ -10,10 +10,8 @@ import sys
 import math
 import random
 import argparse
-# import traceback
 import logging as log
 import traceback
-
 import numpy as np
 import pandas as pd
 import pathlib as pth
@@ -21,7 +19,6 @@ import typing as typ
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
-# from pprint import pprint
 from formatting import banner, printError, success, printWarn
 from pyfiglet import Figlet
 from sklearn.linear_model import LinearRegression
@@ -43,6 +40,15 @@ argumentParser.add_argument("-stdr", "--standard-regress",  # the command line f
                             required=False,                 # the flag is not required
                             default=False,                  # if the flag is not provided, than it will be set to false
                             help="run the standard regression without poisoning"
+                            )
+
+# PCA Reduction Flag
+argumentParser.add_argument("-r", "--reduction",            # the command line flag
+                            action='store_true',            # if the value is true, store it in dest
+                            dest='rdc',                     # the value will be stored in rdc
+                            required=False,                 # the flag is not required
+                            default=False,                  # if the flag is not provided, than it will be set to false
+                            help="informs the program if the input data should be reduced using PCA"
                             )
 
 # Number of Buckets Flag
@@ -73,7 +79,7 @@ log.basicConfig(level=log.ERROR, filename=str(log_path), format='%(levelname)s-%
 def main():
 
     # * Start Up * #
-    title: str = Figlet(font='larry3d').renderText('Weather Data')
+    title: str = Figlet(font='larry3d').renderText('REU 2021')
     SYSOUT.write(f'\033[34;1m{title}\033[00m')  # formatted start up message
     log.debug('Started successfully')
 
@@ -118,10 +124,13 @@ def main():
     report.to_csv(str(rOut))                                   # save the results to a file
     print('')                                                  # print newline after the report
 
-    # create scatter plot of the mean squared error rate vs number of buckets
-    # scatter_plot(report, x_axis='Bucket(s)', y_axis='Mean Squared Error', title='Poisoned Regression', file=str(pth.Path.cwd() / 'output' / 'poison_scatter.png'))
-
-    error_plot(report, str(pth.Path.cwd() / 'output' / 'poison_line.png'))
+    # create line plot of the error rates vs number of buckets
+    if REDUCE:
+        fl = str(pth.Path.cwd() / 'output' / 'poison_err_with_reduce.png')
+    else:
+        fl = str(pth.Path.cwd() / 'output' / 'poison_err.png')
+    # error_plot(report, fl))
+    grid_plot(report, fl)
 
     log.debug('Program completed successfully')
 
@@ -511,9 +520,23 @@ def split_poison(data: pd.DataFrame, spnr) -> typ.Tuple[typ.List[pd.DataFrame], 
     spam: typ.List[np.ndarray] = np.array_split(train.to_numpy(), BUCKETS_NUM)
     training: typ.List[pd.DataFrame] = [pd.DataFrame(a, columns=train.columns) for a in spam]
 
-    log.debug('fixed data split finished')
+    log.debug('poison data split (random split) finished')
     spnr.write(success('bucket split complete '.ljust(23, '-') + u' \u2713'))
     return training, testing
+
+
+def poison_reduction(train: pd.DataFrame, test: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
+
+    # * Dimensionality Reduction * #
+    spnr.text = 'reducing data...'
+    model = PCA(n_components=0.65, svd_solver='full')  # create the model
+    # fit & reduce the training data
+    reduced_train = pd.DataFrame(model.fit_transform(train.drop('OBS_sknt_max', axis=1)), index=train.index)
+    # reduce the test data
+    reduced_test = pd.DataFrame(model.transform(test.drop('OBS_sknt_max', axis=1)), index=test.index)
+
+    log.debug('poison reduction finished')
+    return reduced_train, reduced_test
 
 
 def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
@@ -536,13 +559,28 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
         global BUCKETS_LABEL
         BUCKETS_LABEL.append(len(train.index))
 
+        # * Reduce (if requested) * #
+        train_labels: pd.DataFrame = train['OBS_sknt_max']
+        test_labels: pd.DataFrame = test['OBS_sknt_max']
+        if REDUCE:
+            # if we are reducing call poison_reduction & save the labels
+            train_features: pd.DataFrame
+            test_features: pd.DataFrame
+            train_features, test_features = poison_reduction(train, test, spnr)
+        else:
+            # if we aren't reducing then just create variables with the same names
+            train_features: pd.DataFrame
+            test_features: pd.DataFrame
+            train_features = train.drop('OBS_sknt_max', axis=1)
+            test_features = test.drop('OBS_sknt_max', axis=1)
+
         # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
         # model.fit() takes 2 parameters: X & Y (in that order)
         # X = the labels we suspect are correlated
         # In this case it will be everything but Y
-        X: pd.DataFrame = train.drop('OBS_sknt_max', axis=1)
+        X: pd.DataFrame = train_features
         # Y = the target label (OBS_sknt_max for wind speed)
-        Y: pd.DataFrame = train['OBS_sknt_max']
+        Y: pd.DataFrame = train_labels
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
         spnr.text = 'training model...'
@@ -552,18 +590,20 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
         spnr.text = 'getting error score...'
 
         # name the columns for this instance
-        cols: typ.List[str] = ['Bucket(s)',  'Mean Absolute Error', 'Mean Squared Error', 'Mean Signed Error']
+        cols: typ.List[str] = ['Training Size',  'Mean Absolute Error', 'Mean Squared Error', 'Mean Signed Error']
 
         # get the data for the dataframe (should have the 3 error scores for this instance)
-        results: np.array = np.array([[len(train_list),
-                                       absolute_error(model, test.drop('OBS_sknt_max', axis=1), test['OBS_sknt_max']),
-                                       squared_error(model, test.drop('OBS_sknt_max', axis=1), test['OBS_sknt_max']),
-                                       signed_error(model, test.drop('OBS_sknt_max', axis=1), test['OBS_sknt_max'])]],
+        results: np.array = np.array([[len(train.index),
+                                       absolute_error(model, test_features, test_labels),
+                                       squared_error(model, test_features, test_labels),
+                                       signed_error(model, test_features, test_labels)]],
                                      dtype=float)
 
         # create a dataframe of the result metrics
         df: pd.DataFrame = pd.DataFrame(results, columns=cols, dtype=float)
-        df.round(3)
+        # sort the dataframe so that the model that with the largest training set is 1st
+        df.sort_values(by=['Training Size'], inplace=True, ascending=False)
+        df.round(3)  # round the error values to 3 places
 
         return df
 
@@ -593,39 +633,70 @@ def grid_plot(df: pd.DataFrame, file: str):
     Pandas libraries.
     """
 
-    # TODO: make it display more values along the y axis
     # create the figure that will hold all 4 plots
-    fig, axes = plt.subplots(nrows=3, ncols=1)
+    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True)
+    axes[0].ticklabel_format(style='sci', useMathText=True)
+    axes[1].ticklabel_format(style='sci', useMathText=True)
+    axes[2].ticklabel_format(style='sci', useMathText=True)
+
+    # set the values for the 'Training Size' axis
+
+    axes[2].set_xticks(BUCKETS_LABEL)  # make a tick for every bucket
+    axes[2].set_ylabel('Error Score')  # label the y-axis
+    axes[2].invert_xaxis()
 
     # create the plot & place it in the upper left corner
     df.plot(ax=axes[0],
             kind='line',
-            x='Bucket(s)',
+            x='Training Size',
             y='Mean Absolute Error',
             color='blue',
             style='--',  # the line style
-            legend=True)
+            x_compat=True,
+            rot=45,      # how many degrees to rotate the x-axis labels
+            use_index=True,
+            grid=True,
+            legend=True,
+            marker='o',  # what type of data markers to use?
+            mfc='black'    # what color should they be?
+            )
     # axes[0].set_title('Mean Absolute Error')
 
     # create the plot & place it in the upper right corner
     df.plot(ax=axes[1],
             kind='line',
-            x='Bucket(s)',
+            x='Training Size',
             y='Mean Squared Error',
             color='red',
             style='-.',  # the line style
-            legend=True)
+            rot=45,  # how many degrees to rotate the x-axis labels
+            x_compat=True,
+            use_index=True,
+            grid=True,
+            legend=True,
+            marker='o',  # what type of data markers to use?
+            mfc='black'  # what color should they be?
+            )
     # axes[1].set_title('Mean Squared Error')
 
     # create the plot & place it in the lower left corner
     df.plot(ax=axes[2],
             kind='line',
-            x='Bucket(s)',
+            x='Training Size',
             y='Mean Signed Error',
-            style='-',  # the line style
             color='green',
-            legend=True)
+            style='-',  # the line style
+            rot=45,  # how many degrees to rotate the x-axis labels
+            x_compat=True,
+            use_index=True,
+            grid=True,
+            legend=True,
+            marker='o',  # what type of data markers to use?
+            mfc='black'  # what color should they be?
+            )
     # axes[2].set_title('Mean Signed Error')
+
+    fig.tight_layout()
 
     # save the plot to the provided file path
     plt.savefig(file)
@@ -643,45 +714,58 @@ def error_plot(df: pd.DataFrame, file: str):
 
     # get the axes so the plots can be made on the same figure
     ax = plt.gca()
-    # set the values for the 'Bucket(s)' axis
-    ax.set_xticks(BUCKETS_LABEL)
+    # set the values for the 'Training Size' axis
+    ax.set_xticks(BUCKETS_LABEL)  # make a tick for every bucket
     ax.set_ylabel('Error Score')  # label the y-axis
+    ax.invert_xaxis()
+    ax.ticklabel_format(style='sci', useMathText=True)  # format the sci notation
+    # set the format of sci notation
+    ax.ticklabel_format(style='sci', useMathText=True)
 
     # plot the mean absolute error
     df.plot(ax=ax,
             kind='line',
-            x='Bucket(s)',
+            x='Training Size',
             y='Mean Absolute Error',
             color='blue',
             style='--',  # the line style
             x_compat=True,
             use_index=True,
             grid=True,
-            legend=True)
+            legend=True,
+            marker='o',  # what type of data markers to use?
+            mfc='black'  # what color should they be?
+            )
 
     # plot the mean squared error
     df.plot(ax=ax,
             kind='line',
-            x='Bucket(s)',
+            x='Training Size',
             y='Mean Squared Error',
             color='red',
             style='-.',  # the line style
             x_compat=True,
             use_index=True,
             grid=True,
-            legend=True)
+            legend=True,
+            marker='o',  # what type of data markers to use?
+            mfc='black'    # what color should they be?
+            )
 
     # plot the mean signed error
     df.plot(ax=ax,
             kind='line',
-            x='Bucket(s)',
+            x='Training Size',
             y='Mean Signed Error',
             style=':',  # the line style
             x_compat=True,
             color='green',
             use_index=True,
             grid=True,
-            legend=True)
+            legend=True,
+            marker='o',  # what type of data markers to use?
+            mfc='black'    # what color should they be?
+            )
 
     # save the plot to the provided file path
     plt.savefig(file)
@@ -701,6 +785,7 @@ if __name__ == '__main__':
     BUCKETS_NUM = usr_in.bNum       # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
     RUN_STND_RGRS = usr_in.regress  # RUN_STND_RGRS tells the program if the standard regression (no poison) should run
     SEED = usr_in.sd                # SEED is used as the seed value for random number generation
+    REDUCE = usr_in.rdc             # REDUCE is a bool that says if the data should be reduced using PCA
     BUCKETS_LABEL = []              # BUCKETS_LABEL is used to label the x-axis of the error score plot
 
     # *** Seed the Random Libraries Using the Provided Seed Value *** #
