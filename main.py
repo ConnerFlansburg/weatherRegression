@@ -6,37 +6,42 @@ Authors/Contributors: Dr. Dimitrios Diochnos, Conner Flansburg
 Github Repo:
 """
 
-import sys
-import math
-import random
 import argparse
 import logging as log
+import math
+import pathlib as pth
+import random
+import sys
+import time
+import typing as typ
 import traceback
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pathlib as pth
-import typing as typ
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.decomposition import PCA
-from formatting import banner, printError, success, printWarn
 from pyfiglet import Figlet
+from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.utils import shuffle
 from yaspin import yaspin
 
+from formatting import banner, printError, success, printWarn
+
+# TODO: write doc for command line flags (with examples)
 
 # ******************************************** Parsing Command Line Flags ******************************************** #
 # these values will be used if none are passed
 Buckets_Num: int = 10        # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
 seed: int = 368              # SEED is used as the seed value for random number generation
+trn = 80                     # TRAIN is used to set the the size of the training set
 
 argumentParser = argparse.ArgumentParser()  # create the argument parser
 
 # Run Standard Regression Flag
 argumentParser.add_argument("-stdr", "--standard-regress",  # the command line flag
                             action='store_true',            # if the value is true, store it in dest
-                            dest='regress',                 # the value will be stored in RUN_STND_RGRS
+                            dest='rgrs',                    # the value will be stored in RUN_STND_RGRS
                             required=False,                 # the flag is not required
                             default=False,                  # if the flag is not provided, than it will be set to false
                             help="run the standard regression without poisoning"
@@ -61,6 +66,16 @@ argumentParser.add_argument("-b", "--buckets",              # the command line f
                             help=f"the number of buckets used in poisoning (defaults to {Buckets_Num})"
                             )
 
+# Training Size Flag
+argumentParser.add_argument("-t", "--train",                # the command line flag
+                            action='store',                 # if the value is true, store it in dest
+                            dest='trn',                     # the value will be stored in BUCKETS_NUM
+                            required=False,                 # the flag is not required
+                            default=trn,                  # if the flag is not provided, use Buckets_Num
+                            type=int,                       # cast the input so that it's an integer
+                            help=f"percentage of the input to be used as training data as an integer (i.e. 80 -> 80%)"
+                            )
+
 # Random Seed Flag
 argumentParser.add_argument("-s", "--seed",                 # the command line flag
                             action='store',                 # if the value is true, store it in dest
@@ -68,7 +83,7 @@ argumentParser.add_argument("-s", "--seed",                 # the command line f
                             required=False,                 # the flag is not required
                             default=seed,                   # if the flag is not provided, use Buckets_Num
                             type=int,                       # cast the input so that it's an integer
-                            help=f"the number of buckets used in poisoning (defaults to {Buckets_Num})"
+                            help=f"the number of buckets used in poisoning (defaults to {seed})"
                             )
 # ************************************************ Set up the logger ************************************************* #
 log_path = pth.Path.cwd() / 'logs' / 'log.txt'
@@ -126,9 +141,9 @@ def main():
 
     # create line plot of the error rates vs number of buckets
     if REDUCE:
-        fl = str(pth.Path.cwd() / 'output' / 'poison_err_with_reduce.png')
+        fl = str(pth.Path.cwd() / 'output' / f'{BUCKETS_NUM}_bkts_with_reduce.png')
     else:
-        fl = str(pth.Path.cwd() / 'output' / 'poison_err.png')
+        fl = str(pth.Path.cwd() / 'output' / f'{BUCKETS_NUM}_bkts.png')
     # error_plot(report, fl))
     grid_plot(report, fl)
 
@@ -242,9 +257,11 @@ def split_random(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.Data
     """
 
     log.debug('random data split started')
+    # this is the % of the data that should be used for training (as a decimal)
+    percent_training = TRAIN_SIZE  # TODO: experiment with different sizes
 
     spnr.text = 'splitting data...'
-    train = data_in.sample(frac=0.8, random_state=SEED)  # create a df with 80% of instances
+    train = data_in.sample(frac=percent_training, random_state=SEED)  # create a df with 80% of instances
     test = data_in.drop(train.index)                     # create a df with the remaining 20%
 
     spnr.write(success('data split complete --- '+u'\u2713'))
@@ -263,10 +280,11 @@ def split_fixed(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataF
     """
 
     log.debug('fixed data split started')
+    percent_training = TRAIN_SIZE  # TODO: experiment with different sizes
 
     num_rows: int = len(data_in.index)  # get the number of rows
     # get the number of instances to be added to the training data
-    size_train: int = math.ceil(0.80 * num_rows)
+    size_train: int = math.ceil(percent_training * num_rows)
 
     spnr.text = "splitting data..."
     # slice the dataframe [rows, cols] & grab everything up to size_train
@@ -497,12 +515,13 @@ def split_poison(data: pd.DataFrame, spnr) -> typ.Tuple[typ.List[pd.DataFrame], 
     """
 
     log.debug('fixed data split started')
+    percent_training = TRAIN_SIZE  # TODO: experiment with different sizes
 
     data = shuffle(data)  # randomly reorganize the dataframe befor splitting it
 
     num_rows: int = len(data.index)  # get the number of rows
     # get the number of instances to be added to the training data
-    size_train: int = math.ceil(0.80 * num_rows)
+    size_train: int = math.ceil(percent_training * num_rows)
 
     # * Divide Data into Testing & Training Sets * #
     spnr.text = "splitting data..."
@@ -619,7 +638,7 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
             # train the regression using what's left of train_list, & add results to errs list
             errs.append(poison_data(testing, training))
             training.pop()  # remove the last item from the training data
-            spnr.write(success(f'model {len(errs)}/10 complete '.ljust(23, '-') + u' \u2713'))
+            spnr.write(success(f'model {len(errs)}/{BUCKETS_NUM} complete '.ljust(23, '-') + u' \u2713'))
 
     report = pd.concat(errs)  # transform the list of frames into a single frame
 
@@ -640,25 +659,29 @@ def grid_plot(df: pd.DataFrame, file: str):
     axes[2].ticklabel_format(style='sci', useMathText=True)
 
     # set the values for the 'Training Size' axis
+    axes[0].set_ylabel('Error Score')  # label the y-axis
+    axes[1].set_ylabel('Error Score')  # label the y-axis
 
     axes[2].set_xticks(BUCKETS_LABEL)  # make a tick for every bucket
     axes[2].set_ylabel('Error Score')  # label the y-axis
     axes[2].invert_xaxis()
 
+    # rotate = 45  # how many degrees the x-axis labels should be rotated
+    rotate = 90  # how many degrees the x-axis labels should be rotated
     # create the plot & place it in the upper left corner
     df.plot(ax=axes[0],
             kind='line',
             x='Training Size',
             y='Mean Absolute Error',
             color='blue',
-            style='--',  # the line style
+            style='--',      # the line style
             x_compat=True,
-            rot=45,      # how many degrees to rotate the x-axis labels
+            rot=rotate,      # how many degrees to rotate the x-axis labels
             use_index=True,
             grid=True,
             legend=True,
-            marker='o',  # what type of data markers to use?
-            mfc='black'    # what color should they be?
+            # marker='o',    # what type of data markers to use?
+            # mfc='black'    # what color should they be?
             )
     # axes[0].set_title('Mean Absolute Error')
 
@@ -668,14 +691,14 @@ def grid_plot(df: pd.DataFrame, file: str):
             x='Training Size',
             y='Mean Squared Error',
             color='red',
-            style='-.',  # the line style
-            rot=45,  # how many degrees to rotate the x-axis labels
+            style='-.',    # the line style
+            rot=rotate,    # how many degrees to rotate the x-axis labels
             x_compat=True,
             use_index=True,
             grid=True,
             legend=True,
-            marker='o',  # what type of data markers to use?
-            mfc='black'  # what color should they be?
+            # marker='o',  # what type of data markers to use?
+            # mfc='black'  # what color should they be?
             )
     # axes[1].set_title('Mean Squared Error')
 
@@ -685,14 +708,14 @@ def grid_plot(df: pd.DataFrame, file: str):
             x='Training Size',
             y='Mean Signed Error',
             color='green',
-            style='-',  # the line style
-            rot=45,  # how many degrees to rotate the x-axis labels
+            style='-',     # the line style
+            rot=rotate,    # how many degrees to rotate the x-axis labels
             x_compat=True,
             use_index=True,
             grid=True,
             legend=True,
-            marker='o',  # what type of data markers to use?
-            mfc='black'  # what color should they be?
+            # marker='o',  # what type of data markers to use?
+            # mfc='black'  # what color should they be?
             )
     # axes[2].set_title('Mean Signed Error')
 
@@ -780,13 +803,14 @@ if __name__ == '__main__':
 
     # *** Set the Program's Parameters & Constants *** #
     # (we are not inside a function so the global keyword isn't needed) #
-    usr_in = argumentParser.parse_args()  # grab the input flags
+    usr = argumentParser.parse_args()  # grab the input flags
 
-    BUCKETS_NUM = usr_in.bNum       # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
-    RUN_STND_RGRS = usr_in.regress  # RUN_STND_RGRS tells the program if the standard regression (no poison) should run
-    SEED = usr_in.sd                # SEED is used as the seed value for random number generation
-    REDUCE = usr_in.rdc             # REDUCE is a bool that says if the data should be reduced using PCA
-    BUCKETS_LABEL = []              # BUCKETS_LABEL is used to label the x-axis of the error score plot
+    BUCKETS_NUM: int = usr.bNum          # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
+    RUN_STND_RGRS: bool = usr.rgrs       # RUN_STND_RGRS tells the program if the standard regression (no poison) should run
+    SEED: int = usr.sd                   # SEED is used as the seed value for random number generation
+    REDUCE: bool = usr.rdc               # REDUCE is a bool that says if the data should be reduced using PCA
+    TRAIN_SIZE: float = usr.trn * 0.01   # TRAIN is used to determine the percentage of the input used for the training set
+    BUCKETS_LABEL = []                   # BUCKETS_LABEL is used to label the x-axis of the error score plot
 
     # *** Seed the Random Libraries Using the Provided Seed Value *** #
     random.seed(SEED)
@@ -799,7 +823,10 @@ if __name__ == '__main__':
     NO_OVERWRITE = '\033[32;1m' + HDR      # NO_OVERWRITE colors lines green that don't use overwrite
     SYSOUT = sys.stdout                    # SYSOUT set the standard out for the program to the console
 
-    main()
+    start = time.perf_counter()  # start the timer
+    main()                       # execute the program
+    stop = time.perf_counter()   # end the timer
+    print(f'Execution time: {stop - start:0.4f} Seconds')
     log.debug('closing...\n')
 
 
