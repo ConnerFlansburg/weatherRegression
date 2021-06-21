@@ -33,10 +33,24 @@ from formatting import banner, printError, success, printWarn
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Used for Experimenting with Different Models !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 def create_model():
-    # model = LinearRegression()
-    model = BayesianRidge()
-    # model = Ridge()
-    # model = Lasso()
+    """
+    create_model is used as a wrapper for creation of the model.
+    This allows the model's type to be a parameter/constant.
+    """
+    if MODEL == 'linear':            # use linear regression
+        model = LinearRegression()
+    elif MODEL == 'ridge':           # use ridge regression
+        model = Ridge()
+    elif MODEL == 'bayesRidge':      # use bayesian ridge regression
+        model = BayesianRidge()
+    elif MODEL == 'lasso':           # use lasso regression
+        model = Lasso()
+    else:                            # if the MODEL param has been set incorrectly, print error & exit
+        # * Print Debug Info * #
+        printError(f'Invalid Model Selected: {MODEL} does not exist')
+        # * End Program * #
+        sys.exit(-1)  # recovery impossible, exit
+
     return model
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
@@ -47,6 +61,7 @@ def create_model():
 Buckets_Num: int = 10        # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
 seed: int = 368              # SEED is used as the seed value for random number generation
 trn = 80                     # TRAIN is used to set the the size of the training set
+mdl = 'bRidge'
 
 argumentParser = argparse.ArgumentParser()  # create the argument parser
 
@@ -97,6 +112,15 @@ argumentParser.add_argument("-s", "--seed",                 # the command line f
                             type=int,                       # cast the input so that it's an integer
                             help=f"the number of buckets used in poisoning (defaults to {seed})"
                             )
+
+# Learning Model Type Flag
+argumentParser.add_argument("-m", "--model",
+                            required=False,
+                            dst='md',
+                            choices=['linear', 'ridge', 'bayesRidge', 'lasso'],
+                            default=mdl,
+                            type=str,
+                            help=f"what learning model should be used/tested (defaults to {mdl})")
 # ************************************************ Set up the logger ************************************************* #
 log_path = pth.Path.cwd() / 'logs' / 'log.txt'
 log.basicConfig(level=log.ERROR, filename=str(log_path), format='%(levelname)s-%(message)s')
@@ -124,20 +148,6 @@ def main():
     df_in = scale_data(df_in)
     SYSOUT.write(OVERWRITE + ' Data Scaling finished! '.ljust(44, '-') + SUCCESS); SYSOUT.flush()
     log.debug('Data Scaling finished')
-
-    # * Preform the Standard Linear Regression * #
-    if RUN_STND_RGRS:  # if param RUN_STND_RGRS (run standard regression) is true, execute
-        report: pd.DataFrame = run_regression(df_in)
-        log.debug('Regression performed successfully')
-
-        # * Display & Save Standard Linear Regression Report * #
-        print(f"\n    {banner(' Regression Report ')}")
-        report = report.round(decimals=3)                           # format the data frame
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
-            print(report)                                           # display results
-        rOut = pth.Path.cwd() / 'output' / 'regression_report.csv'  # create file path
-        report.to_csv(str(rOut))                                    # save the results to a file
-        print('')                                                   # print newline after the report
 
     # * Run a Poisoning Attack on the Linear Regression * #
     report = poison_regression(df_in)
@@ -201,10 +211,7 @@ def scale_data(data: pd.DataFrame) -> pd.DataFrame:
     """ Scale the data using a MinMax Scalar. """
 
     # * Remove Outliers * #
-    before = len(data.index)
     data: pd.DataFrame = remove_outlier(data)
-    after = len(data.index)
-    print(f'removed {before-after} instances')
     # * Scale/Normalize the data using a MinMax Scalar * #
     model = MinMaxScaler()        # create the scalar
     model.fit(data)               # fit the scalar
@@ -402,11 +409,11 @@ def squared_error(model, data, label) -> float:
     # TODO: look here for error
     # ? maybe the error is in the error rate calculation?
     # ! for debugging, print prediction to file
-    rst = list(zip(prediction, actual))
-    df = pd.DataFrame(rst, columns=['Prediction', 'Actual'])
-    df.to_csv(str(pth.Path.cwd() / 'logs' / 'predict.csv'))
-    print(f'Prediction Mean: {df["Prediction"]}')
-    print(f'Actual Mean: {df["Actual"]}')
+    # rst = list(zip(prediction, actual))
+    # df = pd.DataFrame(rst, columns=['Prediction', 'Actual'])
+    # df.to_csv(str(pth.Path.cwd() / 'logs' / 'predict.csv'))
+    # print(f'Prediction Mean: {df["Prediction"]}')
+    # print(f'Actual Mean: {df["Actual"]}')
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
     if len(prediction) != len(actual):  # check that both are equal
@@ -653,7 +660,6 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
         training: typ.List[pd.DataFrame]
         testing: pd.DataFrame
         training, testing = split_poison(data_in, spnr)            # split the data into test & train buckets
-        print('Labels in training are: \n')
         # preprocessing is done, train the models
         # create an empty dataframe to hold the error scores
         errs: typ.List[pd.DataFrame] = []
@@ -699,7 +705,7 @@ def grid_plot(df: pd.DataFrame, file: str):
             style='--',      # the line style
             x_compat=True,
             rot=rotate,      # how many degrees to rotate the x-axis labels
-            use_index=True,
+            # use_index=True,
             grid=True,
             legend=True,
             # marker='o',    # what type of data markers to use?
@@ -716,7 +722,7 @@ def grid_plot(df: pd.DataFrame, file: str):
             style='-.',    # the line style
             rot=rotate,    # how many degrees to rotate the x-axis labels
             x_compat=True,
-            use_index=True,
+            # use_index=True,
             grid=True,
             legend=True,
             # marker='o',  # what type of data markers to use?
@@ -733,7 +739,7 @@ def grid_plot(df: pd.DataFrame, file: str):
             style='-',     # the line style
             rot=rotate,    # how many degrees to rotate the x-axis labels
             x_compat=True,
-            use_index=True,
+            # use_index=True,
             grid=True,
             legend=True,
             # marker='o',  # what type of data markers to use?
@@ -832,6 +838,7 @@ if __name__ == '__main__':
     SEED: int = usr.sd                   # SEED is used as the seed value for random number generation
     REDUCE: bool = usr.rdc               # REDUCE is a bool that says if the data should be reduced using PCA
     TRAIN_SIZE: float = usr.trn * 0.01   # TRAIN is used to determine the percentage of the input used for the training set
+    MODEL: str = usr.md                  # MODEL is the type of prediction/learning model to build
     BUCKETS_LABEL = []                   # BUCKETS_LABEL is used to label the x-axis of the error score plot
 
     # *** Seed the Random Libraries Using the Provided Seed Value *** #
