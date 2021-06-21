@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 from pyfiglet import Figlet
 from sklearn.decomposition import PCA
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, BayesianRidge, Ridge, Lasso
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.utils import shuffle
 from yaspin import yaspin
@@ -29,6 +29,18 @@ from yaspin import yaspin
 from formatting import banner, printError, success, printWarn
 
 # TODO: write doc for command line flags (with examples)
+
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Used for Experimenting with Different Models !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+def create_model():
+    # model = LinearRegression()
+    model = BayesianRidge()
+    # model = Ridge()
+    # model = Lasso()
+    return model
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+
 
 # ******************************************** Parsing Command Line Flags ******************************************** #
 # these values will be used if none are passed
@@ -135,7 +147,10 @@ def main():
     report = report.round(decimals=3)                          # format the data frame
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
         print(report)                                          # display results
-    rOut = pth.Path.cwd() / 'output' / 'poisoning_report.csv'  # create file path
+    if REDUCE:  # write the report to a CSV
+        rOut = str(pth.Path.cwd() / 'output' / f'{BUCKETS_NUM}_bkts_with_reduce.csv')
+    else:
+        rOut = str(pth.Path.cwd() / 'output' / f'{BUCKETS_NUM}_bkts.csv')
     report.to_csv(str(rOut))                                   # save the results to a file
     print('')                                                  # print newline after the report
 
@@ -186,7 +201,10 @@ def scale_data(data: pd.DataFrame) -> pd.DataFrame:
     """ Scale the data using a MinMax Scalar. """
 
     # * Remove Outliers * #
+    before = len(data.index)
     data: pd.DataFrame = remove_outlier(data)
+    after = len(data.index)
+    print(f'removed {before-after} instances')
     # * Scale/Normalize the data using a MinMax Scalar * #
     model = MinMaxScaler()        # create the scalar
     model.fit(data)               # fit the scalar
@@ -377,14 +395,18 @@ def absolute_error(model, data, label) -> float:
 def squared_error(model, data, label) -> float:
     """ Calculate the Mean Squared Error """
     model.predict(data)
-    prediction = [round(i, 5) for i in model.predict(data)]
+    prediction = [round(i, 3) for i in model.predict(data)]
     actual = label
     num_instances = len(actual)  # the number of examples in the test set
 
+    # TODO: look here for error
+    # ? maybe the error is in the error rate calculation?
     # ! for debugging, print prediction to file
-    # rst = list(zip(prediction, actual))
-    # df = pd.DataFrame(rst, columns=['Prediction', 'Actual'])
-    # df.to_csv(str(pth.Path.cwd() / 'logs' / 'predict.csv'))
+    rst = list(zip(prediction, actual))
+    df = pd.DataFrame(rst, columns=['Prediction', 'Actual'])
+    df.to_csv(str(pth.Path.cwd() / 'logs' / 'predict.csv'))
+    print(f'Prediction Mean: {df["Prediction"]}')
+    print(f'Actual Mean: {df["Actual"]}')
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
     if len(prediction) != len(actual):  # check that both are equal
@@ -417,7 +439,7 @@ def run_regression(data_in: pd.DataFrame):
 
     def random_data() -> typ.Dict[str, float]:
         """Perform linear regression with randomly divided data"""
-        model = LinearRegression()  # create the regression model
+        model = create_model()  # create the regression model
 
         train: pd.DataFrame
         test: pd.DataFrame
@@ -452,7 +474,7 @@ def run_regression(data_in: pd.DataFrame):
 
     def fixed_data() -> typ.Dict[str, float]:
         """Perform linear regression with a fixed data division"""
-        model = LinearRegression()  # create the regression model
+        model = create_model()  # create the regression model
 
         train: pd.DataFrame
         test: pd.DataFrame
@@ -532,7 +554,7 @@ def split_poison(data: pd.DataFrame, spnr) -> typ.Tuple[typ.List[pd.DataFrame], 
     testing: pd.DataFrame = data.iloc[size_train + 1:, :]
     spnr.write(success('data split complete --- ' + u'\u2713'))
 
-    # * Divide Training Data into 10 Buckets * #
+    # * Divide Training Data into N Buckets * #
     spnr.text = 'creating buckets...'
     # break the training data into BUCKETS_NUM number of smaller dataframes
     # with about the same number of instance in each
@@ -568,7 +590,7 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
 
     def poison_data(test: pd.DataFrame, train_list: typ.List[pd.DataFrame]) -> pd.DataFrame:
         """Perform linear regression with poisoned data"""
-        model = LinearRegression()  # create the regression model
+        model = create_model()  # create the regression model
 
         spnr.text = 'joining dataframes...'
         # create a single dataframe from the list of dataframes
@@ -631,6 +653,7 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
         training: typ.List[pd.DataFrame]
         testing: pd.DataFrame
         training, testing = split_poison(data_in, spnr)            # split the data into test & train buckets
+        print('Labels in training are: \n')
         # preprocessing is done, train the models
         # create an empty dataframe to hold the error scores
         errs: typ.List[pd.DataFrame] = []
@@ -664,7 +687,6 @@ def grid_plot(df: pd.DataFrame, file: str):
 
     axes[2].set_xticks(BUCKETS_LABEL)  # make a tick for every bucket
     axes[2].set_ylabel('Error Score')  # label the y-axis
-    axes[2].invert_xaxis()
 
     # rotate = 45  # how many degrees the x-axis labels should be rotated
     rotate = 90  # how many degrees the x-axis labels should be rotated
