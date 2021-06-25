@@ -15,8 +15,7 @@ import sys
 import time
 import typing as typ
 import traceback
-
-import matplotlib.pyplot as plt
+from alive_progress import alive_bar, config_handler
 import numpy as np
 import pandas as pd
 from pyfiglet import Figlet
@@ -24,7 +23,8 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression, BayesianRidge, Ridge, Lasso
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.utils import shuffle
-from yaspin import yaspin
+
+from plotting import smooth_plot
 
 from formatting import banner, printError, success, printWarn
 
@@ -56,23 +56,19 @@ def create_model():
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 
+# ****************************************** Configuration of Progress Bar ****************************************** #
+# the global config for the loading bars
+config_handler.set_global(spinner='dots_reverse', bar='classic', unknown='stars',
+                          title_length=0, length=20, enrich_print=False)
 # ******************************************** Parsing Command Line Flags ******************************************** #
 # these values will be used if none are passed
-Buckets_Num: int = 10        # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
-seed: int = 368              # SEED is used as the seed value for random number generation
-trn = 80                     # TRAIN is used to set the the size of the training set
-mdl = 'bRidge'
+Buckets_Num: int = 10       # default value for the number of 'buckets' to used in poisoning splitting
+seed: int = 368              # default value for random number generation
+trn = 80                     # default value for the size of the training set
+mdl = 'ridge'                # default model type to run must be linear, ridge, bayesRidge, or lasso
+smth = 5                   # default value for the amount of smoothing to be done
 
 argumentParser = argparse.ArgumentParser()  # create the argument parser
-
-# Run Standard Regression Flag
-argumentParser.add_argument("-stdr", "--standard-regress",  # the command line flag
-                            action='store_true',            # if the value is true, store it in dest
-                            dest='rgrs',                    # the value will be stored in RUN_STND_RGRS
-                            required=False,                 # the flag is not required
-                            default=False,                  # if the flag is not provided, than it will be set to false
-                            help="run the standard regression without poisoning"
-                            )
 
 # PCA Reduction Flag
 argumentParser.add_argument("-r", "--reduction",            # the command line flag
@@ -80,9 +76,7 @@ argumentParser.add_argument("-r", "--reduction",            # the command line f
                             dest='rdc',                     # the value will be stored in rdc
                             required=False,                 # the flag is not required
                             default=False,                  # if the flag is not provided, than it will be set to false
-                            help="informs the program if the input data should be reduced using PCA"
-                            )
-
+                            help="informs the program if the input data should be reduced using PCA")
 # Number of Buckets Flag
 argumentParser.add_argument("-b", "--buckets",              # the command line flag
                             action='store',                 # if the value is true, store it in dest
@@ -90,19 +84,15 @@ argumentParser.add_argument("-b", "--buckets",              # the command line f
                             required=False,                 # the flag is not required
                             default=Buckets_Num,            # if the flag is not provided, use Buckets_Num
                             type=int,                       # cast the input so that it's an integer
-                            help=f"the number of buckets used in poisoning (defaults to {Buckets_Num})"
-                            )
-
+                            help=f"the number of buckets used in poisoning (defaults to {Buckets_Num})")
 # Training Size Flag
 argumentParser.add_argument("-t", "--train",                # the command line flag
                             action='store',                 # if the value is true, store it in dest
                             dest='trn',                     # the value will be stored in BUCKETS_NUM
                             required=False,                 # the flag is not required
-                            default=trn,                  # if the flag is not provided, use Buckets_Num
+                            default=trn,                    # if the flag is not provided, use Buckets_Num
                             type=int,                       # cast the input so that it's an integer
-                            help=f"percentage of the input to be used as training data as an integer (i.e. 80 -> 80%)"
-                            )
-
+                            help=f"percentage of the input to be used as training data as an integer (i.e. 80 -> 80%)")
 # Random Seed Flag
 argumentParser.add_argument("-s", "--seed",                 # the command line flag
                             action='store',                 # if the value is true, store it in dest
@@ -110,17 +100,23 @@ argumentParser.add_argument("-s", "--seed",                 # the command line f
                             required=False,                 # the flag is not required
                             default=seed,                   # if the flag is not provided, use Buckets_Num
                             type=int,                       # cast the input so that it's an integer
-                            help=f"the number of buckets used in poisoning (defaults to {seed})"
-                            )
-
+                            help=f"the number of buckets used in poisoning (defaults to {seed})")
 # Learning Model Type Flag
 argumentParser.add_argument("-m", "--model",
                             required=False,
-                            dst='md',
+                            dest='md',
                             choices=['linear', 'ridge', 'bayesRidge', 'lasso'],
                             default=mdl,
                             type=str,
                             help=f"what learning model should be used/tested (defaults to {mdl})")
+# Smoothening Flag
+argumentParser.add_argument("-sm", "--smooth",             # the command line flag
+                            action='store',                # if the value is true, store it in dest
+                            dest='smooth',                 # the value will be stored in smooth
+                            required=False,                # the flag is not required
+                            default=smth,                  # if the flag is not provided, use smth
+                            type=int,                      # cast the input so that it's an integer
+                            help=f"the number of iterations used during smoothening (defaults to {smth})")
 # ************************************************ Set up the logger ************************************************* #
 log_path = pth.Path.cwd() / 'logs' / 'log.txt'
 log.basicConfig(level=log.ERROR, filename=str(log_path), format='%(levelname)s-%(message)s')
@@ -143,6 +139,8 @@ def main():
     SYSOUT.write(OVERWRITE + ' File read in successfully! '.ljust(44, '-') + SUCCESS); SYSOUT.flush()
     log.debug('Data read in successfully')
 
+    # print(df_in.info())
+
     # * Preprocess Data * #
     SYSOUT.write(HDR + ' Scaling data...'); SYSOUT.flush()
     df_in = scale_data(df_in)
@@ -152,25 +150,15 @@ def main():
     # * Run a Poisoning Attack on the Linear Regression * #
     report = poison_regression(df_in)
 
-    # * Display & Save Report * #
-    print(f"\n    {banner(' Poisoning Report ')}")
-    report = report.round(decimals=3)                          # format the data frame
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.precision', 3):
-        print(report)                                          # display results
-    if REDUCE:  # write the report to a CSV
-        rOut = str(pth.Path.cwd() / 'output' / f'{BUCKETS_NUM}_bkts_with_reduce.csv')
-    else:
-        rOut = str(pth.Path.cwd() / 'output' / f'{BUCKETS_NUM}_bkts.csv')
-    report.to_csv(str(rOut))                                   # save the results to a file
-    print('')                                                  # print newline after the report
+    # * Save Report * #
+    report['Absolute'].to_csv(str(pth.Path.cwd() / 'output' / f'absolute.csv'))
+    report['Signed'].to_csv(str(pth.Path.cwd() / 'output' / f'signed.csv'))
+    report['Squared'].to_csv(str(pth.Path.cwd() / 'output' / f'squared.csv'))
 
-    # create line plot of the error rates vs number of buckets
-    if REDUCE:
-        fl = str(pth.Path.cwd() / 'output' / f'{BUCKETS_NUM}_bkts_with_reduce.png')
-    else:
-        fl = str(pth.Path.cwd() / 'output' / f'{BUCKETS_NUM}_bkts.png')
-    # error_plot(report, fl))
-    grid_plot(report, fl)
+    # * Plot the Report * #
+    smooth_plot(report['Absolute'], str(pth.Path.cwd() / 'output' / f'absoluteError.png'), 'Absolute Error')
+    smooth_plot(report['Signed'], str(pth.Path.cwd() / 'output' / f'signedError.png'), 'Signed Error')
+    smooth_plot(report['Squared'], str(pth.Path.cwd() / 'output' / f'squaredError.png'), 'Squared Error')
 
     log.debug('Program completed successfully')
 
@@ -251,10 +239,10 @@ def remove_outlier(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def reduce_data(train: pd.DataFrame, test: pd.DataFrame, spnr) -> typ.Dict[str, pd.DataFrame]:
+def reduce_data(train: pd.DataFrame, test: pd.DataFrame, bar) -> typ.Dict[str, pd.DataFrame]:
 
     # * Dimensionality Reduction * #
-    spnr.text = 'reducing data...'
+    bar.text('reducing data...')
 
     # this dict will store the labels & reduced data for return
     rtn: typ.Dict[str, pd.DataFrame] = {'Train Label': train['OBS_sknt_max'],
@@ -266,94 +254,12 @@ def reduce_data(train: pd.DataFrame, test: pd.DataFrame, spnr) -> typ.Dict[str, 
     # reduce the test data
     rtn['Test Data'] = pd.DataFrame(model.transform(test.drop('OBS_sknt_max', axis=1)), index=test.index)
 
-    spnr.write(success('reduction complete ---- '+u'\u2713'))
+    print(success('reduction complete ---- '+u'\u2713'))
     return rtn
-
-
-def split_random(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    split_random will randomly split the provided Pandas dataframe into testing & training data
-    (using SEED as the seed value).
-
-    :param data_in: dataframe to be split
-    :param spnr: spinner used for console printing
-
-    :return: dataframes for train & test (in that order)
-    """
-
-    log.debug('random data split started')
-    # this is the % of the data that should be used for training (as a decimal)
-    percent_training = TRAIN_SIZE  # TODO: experiment with different sizes
-
-    spnr.text = 'splitting data...'
-    train = data_in.sample(frac=percent_training, random_state=SEED)  # create a df with 80% of instances
-    test = data_in.drop(train.index)                     # create a df with the remaining 20%
-
-    spnr.write(success('data split complete --- '+u'\u2713'))
-    return train, test
-
-
-def split_fixed(data_in: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    split_fixed will split the provided Pandas dataframe into testing & training data
-    using the first 80% of the entries as training, and the rest as testing.
-
-    :param data_in: dataframe to be split
-    :param spnr: spinner used for console printing
-
-    :return: dataframes for train & test (in that order)
-    """
-
-    log.debug('fixed data split started')
-    percent_training = TRAIN_SIZE  # TODO: experiment with different sizes
-
-    num_rows: int = len(data_in.index)  # get the number of rows
-    # get the number of instances to be added to the training data
-    size_train: int = math.ceil(percent_training * num_rows)
-
-    spnr.text = "splitting data..."
-    # slice the dataframe [rows, cols] & grab everything up to size_train
-    train: pd.DataFrame = data_in.iloc[:size_train+1, :]
-    # slice the dataframe [rows, cols] & grab everything after size_train
-    test: pd.DataFrame = data_in.iloc[size_train+1:, :]
-
-    log.debug('fixed data split finished')
-    spnr.write(success('data split complete --- '+u'\u2713'))
-    return train, test
 # ************************************************************** #
 
 
 # *************************** REPORT *************************** #
-def create_report(rand: typ.Dict[str, float], fixed: typ.Dict[str, float]) -> pd.DataFrame:
-    """
-    create_report will used the provided values to create a dataframe containing
-    information on the error scores of the fixed & random linear regression models.
-
-    :param rand: dictionary with the error scores for the rand model
-    :param fixed: dictionary with the error scores for the fixed model
-
-
-    :return: dataframes for train & test (in that order)
-    """
-
-    SYSOUT.write(HDR + ' Generating Report...'); SYSOUT.flush()
-
-    cols: typ.List[str] = ['Regression (random)', 'Regression (fixed)']
-    rws: typ.List[str] = ['Mean Absolute Error', 'Mean Squared Error', 'Mean Signed Error']
-
-    # get the error values from the passed dictionaries
-    results: np.array = np.array([[rand['absolute'], fixed['absolute']],
-                                  [rand['squared'], fixed['squared']],
-                                  [rand['signed'], fixed['signed']]], dtype=float)
-
-    # create a dataframe of the result metrics
-    df: pd.DataFrame = pd.DataFrame(results, columns=cols, index=rws, dtype=float)
-    df.round(3)
-
-    SYSOUT.write(OVERWRITE + ' Report Generated! '.ljust(44, '-') + SUCCESS); SYSOUT.flush()
-    return df
-
-
 def signed_error(model, data, label) -> float:
     """ Calculate the Mean Signed Error """
     prediction = model.predict(data)
@@ -437,108 +343,15 @@ def beaufort_scale(model, train, test):
 # ************************************************************** #
 
 
-# *************************** MODELS *************************** #
-def run_regression(data_in: pd.DataFrame):
-    """ run_regression will run a simple linear regression on the passed dataframe. """
-
-    print(banner(' Starting Liner Regression '))
-    data_in: pd.DataFrame = pd.DataFrame(data_in)
-
-    def random_data() -> typ.Dict[str, float]:
-        """Perform linear regression with randomly divided data"""
-        model = create_model()  # create the regression model
-
-        train: pd.DataFrame
-        test: pd.DataFrame
-        train, test = split_random(data_in, spnr)  # randomly split dataset
-        reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, spnr)
-
-        # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
-        # model.fit() takes 2 parameters: X & Y (in that order)
-        # X = the labels we suspect are correlated
-        # In this case it will be everything but Y
-        # ! At this point we can't drop the col because they have no names because of reduce_data
-        # perform preprocessing
-        X: pd.DataFrame = reduced['Train Data']
-        # Y = the target label (OBS_sknt_max for wind speed)
-        Y: pd.DataFrame = reduced['Train Label']
-        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-
-        spnr.text = 'training model...'
-        model.fit(X, Y)  # fit the model using X & Y (see above)
-        spnr.write(success('training complete ----- '+u'\u2713'))
-
-        spnr.text = 'getting error score...'
-        # calculate the error scores
-        results: typ.Dict = {
-            'absolute': absolute_error(model, reduced['Test Data'], reduced['Test Label']),
-            'squared': squared_error(model, reduced['Test Data'], reduced['Test Label']),
-            'signed': signed_error(model, reduced['Test Data'], reduced['Test Label']),
-        }
-
-        spnr.write(success('error score computed -- ' + u'\u2713'))
-        return results
-
-    def fixed_data() -> typ.Dict[str, float]:
-        """Perform linear regression with a fixed data division"""
-        model = create_model()  # create the regression model
-
-        train: pd.DataFrame
-        test: pd.DataFrame
-        train, test = split_fixed(data_in, spnr)  # split dataset
-        reduced: typ.Dict[str, pd.DataFrame] = reduce_data(train, test, spnr)
-
-        # +++++++++++++++++++ Model Fit Notes +++++++++++++++++++ #
-        # model.fit() takes 2 parameters: X & Y (in that order)
-        # X = the labels we suspect are correlated
-        # In this case it will be everything but Y
-        # perform preprocessing
-        X: pd.DataFrame = reduced['Train Data']
-        # Y = the target label (OBS_sknt_max for wind speed)
-        Y: pd.DataFrame = reduced['Train Label']
-        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-
-        spnr.text = 'training model...'
-        model.fit(X, Y)  # fit the model using X & Y (see above)
-        spnr.write(success('training complete ----- '+u'\u2713'))
-
-        spnr.text = 'getting error score...'
-        # calculate the error scores
-        results = {
-            'absolute': absolute_error(model, reduced['Test Data'], reduced['Test Label']),
-            'squared': squared_error(model, reduced['Test Data'], reduced['Test Label']),
-            'signed': signed_error(model, reduced['Test Data'], reduced['Test Label']),
-        }
-
-        spnr.write(success('error score computed -- ' + u'\u2713'))
-        return results
-
-    with yaspin(text='Starting Regression (random split)...') as spnr:
-        spnr.write('Starting Regression (random split)...')
-        rand = random_data()   # run the regression with a random data split
-
-    with yaspin(text='Starting Regression (fixed split)...') as spnr:
-        spnr.write('Starting Regression (fixed split)...')
-        fixed = fixed_data()   # run the regression with a fixed data split
-
-    print(banner(' Liner Regression Finished '))
-
-    # pass the dicts with the error values to the report generator
-    report: pd.DataFrame = create_report(rand, fixed)
-
-    return report
-# ************************************************************** #
-
-
 # ************************* Poisoning ************************* #
-def split_poison(data: pd.DataFrame, spnr) -> typ.Tuple[typ.List[pd.DataFrame], pd.DataFrame]:
+def split_poison(data: pd.DataFrame, bar) -> typ.Tuple[typ.List[pd.DataFrame], pd.DataFrame]:
     """
     split_poison will split the provided Pandas dataframe into testing & training data
     using the first 80% of the entries as training, and the rest as testing.
     This should method should only be used during poisoning attacks
 
     :param data: dataframe to be split
-    :param spnr: spinner used for console printing
+    :param bar: loading bar used for console printing
 
     :return: dataframes for train & test (in that order)
     """
@@ -546,37 +359,33 @@ def split_poison(data: pd.DataFrame, spnr) -> typ.Tuple[typ.List[pd.DataFrame], 
     log.debug('fixed data split started')
     percent_training = TRAIN_SIZE  # TODO: experiment with different sizes
 
-    data = shuffle(data)  # randomly reorganize the dataframe befor splitting it
-
     num_rows: int = len(data.index)  # get the number of rows
     # get the number of instances to be added to the training data
     size_train: int = math.ceil(percent_training * num_rows)
 
     # * Divide Data into Testing & Training Sets * #
-    spnr.text = "splitting data..."
+    bar.text("splitting data...")
     # slice [inclusive : not_inclusive]
     # slice the dataframe [rows, cols] & grab everything up to size_train
     train: pd.DataFrame = data.iloc[:size_train + 1, :]
     # slice the dataframe [rows, cols] & grab everything after size_train
     testing: pd.DataFrame = data.iloc[size_train + 1:, :]
-    spnr.write(success('data split complete --- ' + u'\u2713'))
 
     # * Divide Training Data into N Buckets * #
-    spnr.text = 'creating buckets...'
+    bar.text('creating buckets...')
     # break the training data into BUCKETS_NUM number of smaller dataframes
     # with about the same number of instance in each
     spam: typ.List[np.ndarray] = np.array_split(train.to_numpy(), BUCKETS_NUM)
     training: typ.List[pd.DataFrame] = [pd.DataFrame(a, columns=train.columns) for a in spam]
 
     log.debug('poison data split (random split) finished')
-    spnr.write(success('bucket split complete '.ljust(23, '-') + u' \u2713'))
     return training, testing
 
 
-def poison_reduction(train: pd.DataFrame, test: pd.DataFrame, spnr) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
+def poison_reduction(train: pd.DataFrame, test: pd.DataFrame, bar) -> typ.Tuple[pd.DataFrame, pd.DataFrame]:
 
     # * Dimensionality Reduction * #
-    spnr.text = 'reducing data...'
+    bar.text('reducing data...')
     model = PCA(n_components=0.65, svd_solver='full')  # create the model
     # fit & reduce the training data
     reduced_train = pd.DataFrame(model.fit_transform(train.drop('OBS_sknt_max', axis=1)), index=train.index)
@@ -587,7 +396,7 @@ def poison_reduction(train: pd.DataFrame, test: pd.DataFrame, spnr) -> typ.Tuple
     return reduced_train, reduced_test
 
 
-def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
+def poison_regression(data_in: pd.DataFrame) -> typ.Dict[str, pd.DataFrame]:
     """
     poison_regression will run a simple linear regression on the passed dataframe
     & poison the training data.
@@ -595,17 +404,17 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
     print(banner(' Poisoning Liner Regression '))
     data_in: pd.DataFrame = pd.DataFrame(data_in)
 
-    def poison_data(test: pd.DataFrame, train_list: typ.List[pd.DataFrame]) -> pd.DataFrame:
+    def poison_data(test: pd.DataFrame, train_list: typ.List[pd.DataFrame]) -> typ.Dict[str, float]:
         """Perform linear regression with poisoned data"""
         model = create_model()  # create the regression model
 
-        spnr.text = 'joining dataframes...'
+        bar.text('joining dataframes...')
         # create a single dataframe from the list of dataframes
         train: pd.DataFrame = pd.concat(train_list)
         # BUCKETS_LABEL is used to save the number of instances used for each iteration,
         # so add to it here.
         global BUCKETS_LABEL
-        BUCKETS_LABEL.append(len(train.index))
+        BUCKETS_LABEL.add(len(train.index))
 
         # * Reduce (if requested) * #
         train_labels: pd.DataFrame = train['OBS_sknt_max']
@@ -614,7 +423,7 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
             # if we are reducing call poison_reduction & save the labels
             train_features: pd.DataFrame
             test_features: pd.DataFrame
-            train_features, test_features = poison_reduction(train, test, spnr)
+            train_features, test_features = poison_reduction(train, test, bar)
         else:
             # if we aren't reducing then just create variables with the same names
             train_features: pd.DataFrame
@@ -631,199 +440,83 @@ def poison_regression(data_in: pd.DataFrame) -> pd.DataFrame:
         Y: pd.DataFrame = train_labels
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-        spnr.text = 'training model...'
+        bar.text('training model...')
         model.fit(X, Y)  # fit the model using X & Y (see above)
 
         # * Calculate the Error Scores * #
-        spnr.text = 'getting error score...'
+        bar.text('getting error score...')
 
-        # name the columns for this instance
-        cols: typ.List[str] = ['Training Size',  'Mean Absolute Error', 'Mean Squared Error', 'Mean Signed Error']
+        frame = {
+            'Absolute': absolute_error(model, test_features, test_labels),
+            'Squared': squared_error(model, test_features, test_labels),
+            'Signed': signed_error(model, test_features, test_labels)
+        }
 
-        # get the data for the dataframe (should have the 3 error scores for this instance)
-        results: np.array = np.array([[len(train.index),
-                                       absolute_error(model, test_features, test_labels),
-                                       squared_error(model, test_features, test_labels),
-                                       signed_error(model, test_features, test_labels)]],
-                                     dtype=float)
+        return frame
 
-        # create a dataframe of the result metrics
-        df: pd.DataFrame = pd.DataFrame(results, columns=cols, dtype=float)
-        # sort the dataframe so that the model that with the largest training set is 1st
-        df.sort_values(by=['Training Size'], inplace=True, ascending=False)
-        df.round(3)  # round the error values to 3 places
+    # this will be a list of lists of the errors scores
+    # (each member will be a list of the error score for every bucket)
+    report_list = {'Absolute': [], 'Squared': [], 'Signed': []}
+    for sm in range(SMOOTH):
 
-        return df
+        # randomly shuffle the dataframe for each iteration of SMOOTH before splitting it
+        data_in = shuffle(data_in)
 
-    with yaspin(text='Starting Regression (poisoned)...') as spnr:
-        spnr.write('Starting Regression (poisoned)...')
-        training: typ.List[pd.DataFrame]
-        testing: pd.DataFrame
-        training, testing = split_poison(data_in, spnr)            # split the data into test & train buckets
-        # preprocessing is done, train the models
-        # create an empty dataframe to hold the error scores
-        errs: typ.List[pd.DataFrame] = []
-        while training:  # while train_list still has training data,
-            # train the regression using what's left of train_list, & add results to errs list
-            errs.append(poison_data(testing, training))
-            training.pop()  # remove the last item from the training data
-            spnr.write(success(f'model {len(errs)}/{BUCKETS_NUM} complete '.ljust(23, '-') + u' \u2713'))
+        with alive_bar(BUCKETS_NUM, title=f'Regression {sm}/{SMOOTH}') as bar:
+            bar.text('Starting...')
 
-    report = pd.concat(errs)  # transform the list of frames into a single frame
+            # split the data into test & train buckets
+            training: typ.List[pd.DataFrame]
+            testing: pd.DataFrame
+            training, testing = split_poison(data_in, bar)
+
+            # Buckets is used to pass the training data that will actually be used by the model,
+            buckets: typ.List[pd.DataFrame] = []
+
+            # These are arrays that will hold the error rates for every bucket
+            absolute = []
+            squared = []
+            signed = []
+
+            # preprocessing is done, train the models
+            while training:  # while we can still pop training (we haven't used all buckets)
+
+                # add the last frame from the training set to the set of buckets
+                buckets.append(training.pop())
+
+                # !!!!!!!!!!!!!!!!!!!!!! for debugging !!!!!!!!!!!!!!!!!!!!!! #
+                # printWarn(f'Training after pop has length of {len(training)}')
+                # printWarn(f'Buckets after pop has length of {len(buckets)}')
+                # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+
+                # train the regression using what's left of train_list, & add results to errs list
+                current_errors = poison_data(testing, buckets)
+
+                # add the error from this iteration to the lists of error rates
+                absolute.append(current_errors['Absolute'])
+                squared.append(current_errors['Squared'])
+                signed.append(current_errors['Signed'])
+
+                # inform user that this bucket size iteration is done
+                # print(success(f'model {len(buckets)}/{BUCKETS_NUM} complete '.ljust(23, '-') + u' \u2713'))
+                bar()  # update the loading bar
+
+        # add the error values for each iteration of smooth to the report dictionary
+        report_list['Absolute'].append(absolute)
+        report_list['Squared'].append(squared)
+        report_list['Signed'].append(signed)
+
+    # use the list of lists to create a dataframe that has the training size as the cols & smooth iter as rows
+    # this will create a dataframe of the error score for every iteration & training size.
+    # get the average values later
+    report: typ.Dict[str, pd.DataFrame] = {
+        'Absolute': pd.DataFrame(report_list['Absolute'], columns=BUCKETS_LABEL, dtype=float).round(3),
+        'Squared': pd.DataFrame(report_list['Squared'], columns=BUCKETS_LABEL, dtype=float).round(3),
+        'Signed': pd.DataFrame(report_list['Signed'], columns=BUCKETS_LABEL, dtype=float).round(3)
+    }
 
     print(banner(' Poisoning Finished '))
     return report
-
-
-def grid_plot(df: pd.DataFrame, file: str):
-    """
-    scatter_plot creates a scatter plot of the dataframe using
-    Pandas libraries.
-    """
-
-    # create the figure that will hold all 4 plots
-    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True)
-    axes[0].ticklabel_format(style='sci', useMathText=True)
-    axes[1].ticklabel_format(style='sci', useMathText=True)
-    axes[2].ticklabel_format(style='sci', useMathText=True)
-
-    # set the values for the 'Training Size' axis
-    axes[0].set_ylabel('Error Score')  # label the y-axis
-    axes[1].set_ylabel('Error Score')  # label the y-axis
-
-    axes[2].set_xticks(BUCKETS_LABEL)  # make a tick for every bucket
-    axes[2].set_ylabel('Error Score')  # label the y-axis
-
-    # rotate = 45  # how many degrees the x-axis labels should be rotated
-    rotate = 90  # how many degrees the x-axis labels should be rotated
-    # create the plot & place it in the upper left corner
-    df.plot(ax=axes[0],
-            kind='line',
-            x='Training Size',
-            y='Mean Absolute Error',
-            color='blue',
-            style='--',      # the line style
-            x_compat=True,
-            rot=rotate,      # how many degrees to rotate the x-axis labels
-            # use_index=True,
-            grid=True,
-            legend=True,
-            # marker='o',    # what type of data markers to use?
-            # mfc='black'    # what color should they be?
-            )
-    # axes[0].set_title('Mean Absolute Error')
-
-    # create the plot & place it in the upper right corner
-    df.plot(ax=axes[1],
-            kind='line',
-            x='Training Size',
-            y='Mean Squared Error',
-            color='red',
-            style='-.',    # the line style
-            rot=rotate,    # how many degrees to rotate the x-axis labels
-            x_compat=True,
-            # use_index=True,
-            grid=True,
-            legend=True,
-            # marker='o',  # what type of data markers to use?
-            # mfc='black'  # what color should they be?
-            )
-    # axes[1].set_title('Mean Squared Error')
-
-    # create the plot & place it in the lower left corner
-    df.plot(ax=axes[2],
-            kind='line',
-            x='Training Size',
-            y='Mean Signed Error',
-            color='green',
-            style='-',     # the line style
-            rot=rotate,    # how many degrees to rotate the x-axis labels
-            x_compat=True,
-            # use_index=True,
-            grid=True,
-            legend=True,
-            # marker='o',  # what type of data markers to use?
-            # mfc='black'  # what color should they be?
-            )
-    # axes[2].set_title('Mean Signed Error')
-
-    fig.tight_layout()
-
-    # save the plot to the provided file path
-    plt.savefig(file)
-    # show the plot
-    plt.show()
-
-    return
-
-
-def error_plot(df: pd.DataFrame, file: str):
-    """
-    error_plot creates a line plot of the report dataframe using
-    Pandas libraries, & plots all 3 error scores on the same figure.
-    """
-
-    # get the axes so the plots can be made on the same figure
-    ax = plt.gca()
-    # set the values for the 'Training Size' axis
-    ax.set_xticks(BUCKETS_LABEL)  # make a tick for every bucket
-    ax.set_ylabel('Error Score')  # label the y-axis
-    ax.invert_xaxis()
-    ax.ticklabel_format(style='sci', useMathText=True)  # format the sci notation
-    # set the format of sci notation
-    ax.ticklabel_format(style='sci', useMathText=True)
-
-    # plot the mean absolute error
-    df.plot(ax=ax,
-            kind='line',
-            x='Training Size',
-            y='Mean Absolute Error',
-            color='blue',
-            style='--',  # the line style
-            x_compat=True,
-            use_index=True,
-            grid=True,
-            legend=True,
-            marker='o',  # what type of data markers to use?
-            mfc='black'  # what color should they be?
-            )
-
-    # plot the mean squared error
-    df.plot(ax=ax,
-            kind='line',
-            x='Training Size',
-            y='Mean Squared Error',
-            color='red',
-            style='-.',  # the line style
-            x_compat=True,
-            use_index=True,
-            grid=True,
-            legend=True,
-            marker='o',  # what type of data markers to use?
-            mfc='black'    # what color should they be?
-            )
-
-    # plot the mean signed error
-    df.plot(ax=ax,
-            kind='line',
-            x='Training Size',
-            y='Mean Signed Error',
-            style=':',  # the line style
-            x_compat=True,
-            color='green',
-            use_index=True,
-            grid=True,
-            legend=True,
-            marker='o',  # what type of data markers to use?
-            mfc='black'    # what color should they be?
-            )
-
-    # save the plot to the provided file path
-    plt.savefig(file)
-    # show the plot
-    plt.show()
-
-    return
 
 
 if __name__ == '__main__':
@@ -834,12 +527,12 @@ if __name__ == '__main__':
     usr = argumentParser.parse_args()  # grab the input flags
 
     BUCKETS_NUM: int = usr.bNum          # BUCKETS_NUM is the number of 'buckets' to used in poisoning splitting
-    RUN_STND_RGRS: bool = usr.rgrs       # RUN_STND_RGRS tells the program if the standard regression (no poison) should run
     SEED: int = usr.sd                   # SEED is used as the seed value for random number generation
     REDUCE: bool = usr.rdc               # REDUCE is a bool that says if the data should be reduced using PCA
     TRAIN_SIZE: float = usr.trn * 0.01   # TRAIN is used to determine the percentage of the input used for the training set
     MODEL: str = usr.md                  # MODEL is the type of prediction/learning model to build
-    BUCKETS_LABEL = []                   # BUCKETS_LABEL is used to label the x-axis of the error score plot
+    SMOOTH: int = usr.smooth             # SMOOTH is the amount of iterations to be used during smoothening
+    BUCKETS_LABEL: typ.Set[int] = set()  # BUCKETS_LABEL is used to label the x-axis of the error score plot
 
     # *** Seed the Random Libraries Using the Provided Seed Value *** #
     random.seed(SEED)
