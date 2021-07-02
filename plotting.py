@@ -161,10 +161,8 @@ def smooth_plot(df: pd.DataFrame, file: str, title: str):
 
     # * Create a New Dataframe with the Desired Stats * #
     # sort the data frame by training size so the new dataframe is in order
-    sorted_cols = list(df.columns)
-    sorted_cols.sort()
-    df = df.reindex(columns=sorted_cols)
 
+    sorted_cols = list(df.columns)
     # in the original dataframe each col is a all the values for a set number of buckets/training size,
     # & each row is a single example/instance/smooth iteration.
     # Now we want to transform the dataframe so that each col contains the min/max/median over every

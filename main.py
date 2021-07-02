@@ -62,11 +62,11 @@ config_handler.set_global(spinner='dots_reverse', bar='classic', unknown='stars'
                           title_length=0, length=20, enrich_print=False)
 # ******************************************** Parsing Command Line Flags ******************************************** #
 # these values will be used if none are passed
-Buckets_Num: int = 10       # default value for the number of 'buckets' to used in poisoning splitting
+Buckets_Num: int = 100       # default value for the number of 'buckets' to used in poisoning splitting
 seed: int = 368              # default value for random number generation
 trn = 80                     # default value for the size of the training set
 mdl = 'ridge'                # default model type to run must be linear, ridge, bayesRidge, or lasso
-smth = 5                   # default value for the amount of smoothing to be done
+smth = 20                    # default value for the amount of smoothing to be done
 
 argumentParser = argparse.ArgumentParser()  # create the argument parser
 
@@ -151,8 +151,19 @@ def main():
     report = poison_regression(df_in)
 
     # * Save Report * #
+    sorted_cols = list(report['Absolute'].columns)
+    sorted_cols.sort()
+    report['Absolute'] = report['Absolute'].reindex(columns=sorted_cols)
     report['Absolute'].to_csv(str(pth.Path.cwd() / 'output' / f'absolute.csv'))
+
+    sorted_cols = list(report['Signed'].columns)
+    sorted_cols.sort()
+    report['Signed'] = report['Signed'].reindex(columns=sorted_cols)
     report['Signed'].to_csv(str(pth.Path.cwd() / 'output' / f'signed.csv'))
+
+    sorted_cols = list(report['Squared'].columns)
+    sorted_cols.sort()
+    report['Squared'] = report['Squared'].reindex(columns=sorted_cols)
     report['Squared'].to_csv(str(pth.Path.cwd() / 'output' / f'squared.csv'))
 
     # * Plot the Report * #
