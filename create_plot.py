@@ -9,6 +9,9 @@ import typing as typ
 from collections import Counter
 from formatting import printWarn
 
+# TODO: change it so the median & average for the mean squared error are on the same plot
+# TODO: change it so the median & average for the root mean squared error are on the same plot
+
 
 def plot_values(title, fl, inpt):
 
@@ -46,7 +49,8 @@ def plot_values(title, fl, inpt):
 
     fig.tight_layout()  # tighten the layout
     plt.savefig(fl)     # save the plot
-    # plt.show()          # show the plot
+    # ! BUG: not showing the plot causes a bunch of lines to show up
+    plt.show()          # show the plot
     return
 
 
@@ -276,22 +280,22 @@ def plot_errors(city_list: typ.List[str]):
         # *** Plot the Median Mean Squared Error *** #
         in_mdn: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'error_values' / 'mse_mdn.csv')
         out_mdn: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'error_plots' / f'squared_mdn_err_plot.png')
-        plot_values('Mean Squared Median', out_mdn, in_mdn)
+        plot_values(f'{city} Mean Squared Median', out_mdn, in_mdn)
 
         # *** Plot the Average Mean Squared Error *** #
         in_avr: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'error_values' / 'mse_avr.csv')
         out_avr: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'error_plots' / f'squared_avr_err_plot.png')
-        plot_values('Mean Squared Average', out_avr, in_avr)
+        plot_values(f'{city} Mean Squared Average', out_avr, in_avr)
 
         # *** Plot the Median Root  Mean Squared Error *** #
         in_mdn: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'error_values' / 'rmse_mdn.csv')
         out_mdn: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'error_plots' / f'root_squared_mdn_err_plot.png')
-        plot_values('Root Mean Squared Median', out_mdn, in_mdn)
+        plot_values(f'{city} Root Mean Squared Median', out_mdn, in_mdn)
 
         # *** Plot the Average Root  Mean Squared Error *** #
         in_avr: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'error_values' / 'rmse_avr.csv')
         out_avr: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'error_plots' / f'root_squared_avr_err_plot.png')
-        plot_values('Root Mean Squared Average', out_avr, in_avr)
+        plot_values(f'{city} Root Mean Squared Average', out_avr, in_avr)
 
     return
 
