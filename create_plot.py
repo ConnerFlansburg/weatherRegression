@@ -104,6 +104,106 @@ def beaufort_scale(original: float) -> int:
     sys.exit(-1)  # cannot recover from this error, so exit
 
 
+# TODO: Check that this runs correctly
+# ? Should I be taking the average of this range (start:stop) over every permutation?
+# TODO: Code Version 1 - use only this current permutation, making a new one for each perm
+# TODO: Code Version 2 - use all permutations, making one for each index
+
+def plot_spikes(city: str, start_index: int, stop_index: int, perm: int):
+    """
+    This will create a histogram for the index range pass using
+    only the passed permutation.
+    """
+
+    # * Read in the Permutated Wind Speeds * #
+    path: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'permutation' / f'wind_speed_{perm}.csv')
+    permutation: pd.DataFrame = pd.read_csv(path, names=['Wind'])
+
+    # * Get the Wind Speeds of Interest in the Beafort Scale * #
+    wind_speeds = [beaufort_scale(i) for i in permutation[start_index:stop_index+1]]
+
+    # * Plot the Beaufort Scale Values using a Histogram * #
+    sns.set(
+        font_scale=2,                    # resizes the font (of everything)
+        rc={"figure.figsize": (14, 9)},  # set the size of the plot
+        style="darkgrid"                 # sets the plots style
+    )
+    plt.title(f'{city} {start_index}-{stop_index} Spike Distribution')  # set the plots title
+
+    bins = 50  # the number of bins to use
+    sns.histplot(            # make the histogram
+        data=wind_speeds,    # the dataframe
+        x='Wind',            # the column from the dataframe
+        bins=bins,
+        color='blue',
+        alpha=0.5,           # how transparent the bar should be (1=solid, 0=invisible)
+        # kde=True,          # draw a density line
+        stat='probability',  # make the histogram show percentages
+        discrete=True,
+    )
+
+    # * Display the Plot & Save it * #
+    save = str(pth.Path.cwd() / 'output' / f'{city}' / f'{city}_spike_distribution.png')
+    ax = plt.gca()                         # get the current ax
+    ax.set_xlabel('Beaufort Scale Value')  # label the x-axis
+    plt.legend()                           # show the legend
+    plt.savefig(save)                      # save the plot
+    plt.show()                             # display the plot
+
+
+def plot_spikes_avr(city: str, start_index: int, stop_index: int):
+    """
+    This will create a histogram for the index range pass using every permutation.
+    """
+    # ? should I take the average or just use all the values?
+    avr_speed_lists = []  # this will be used if we want to average the values of our indexes
+    speed_list = []  # this will be used if we want to use every wind speed (no average)
+
+    for perm in range(10):
+        # Read in the Current Permutation
+        path: str = str(pth.Path.cwd() / 'output' / f'{city}' / 'permutation' / f'wind_speed_{perm}.csv')
+        permutation: pd.DataFrame = pd.read_csv(path, names=['Wind'])
+        # Convert the Current Permutation to a List of Beaufort Scale Values
+        speeds: typ.List[int] = [beaufort_scale(i) for i in permutation[start_index:stop_index + 1]]
+
+        # ! Pick One: either average values or all values
+        avr_speed_lists.append(speeds)  # add a new row to the matrix
+        speed_list.extend(speeds)       # extend the list of speeds to include the new values
+
+    # ! If averaging, average columns
+    wind_speeds = np.average(avr_speed_lists, axis=0)
+    # ! If not averaging, use every value
+    wind_speeds = speed_list
+
+    # * Plot the Beaufort Scale Values using a Histogram * #
+    sns.set(
+        font_scale=2,                    # resizes the font (of everything)
+        rc={"figure.figsize": (14, 9)},  # set the size of the plot
+        style="darkgrid"                 # sets the plots style
+    )
+    plt.title(f'{city} {start_index}-{stop_index} Spike Distribution Over Smooth Iter')  # set the plots title
+
+    bins = 50  # the number of bins to use
+    sns.histplot(            # make the histogram
+        data=wind_speeds,    # the dataframe
+        x='Wind',            # the column from the dataframe
+        bins=bins,
+        color='blue',
+        alpha=0.5,           # how transparent the bar should be (1=solid, 0=invisible)
+        # kde=True,          # draw a density line
+        stat='probability',  # make the histogram show percentages
+        discrete=True,
+    )
+
+    # * Display the Plot & Save it * #
+    save = str(pth.Path.cwd() / 'output' / f'{city}' / f'{city}_spike_distribution_smooth.png')
+    ax = plt.gca()                         # get the current ax
+    ax.set_xlabel('Beaufort Scale Value')  # label the x-axis
+    plt.legend()                           # show the legend
+    plt.savefig(save)                      # save the plot
+    plt.show()                             # display the plot
+
+
 def plot_histograms():
 
     # create a list of every csv file
@@ -303,5 +403,7 @@ def plot_errors(city_list: typ.List[str]):
 if __name__ == "__main__":
 
     plot_errors(['kdfw', 'kcys', 'kroa'])
-    # plot_histogram_original()
-    # plot_histograms()
+
+    # TODO: call plot_spikes() & plot_spikes_avr()
+
+    pass

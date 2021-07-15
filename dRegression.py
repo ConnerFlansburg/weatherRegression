@@ -270,12 +270,9 @@ def main():
         our_permuted_training_instances, our_permuted_training_labels = permute_instances_and_labels_using_permutation(
             our_training_instances, our_training_labels, the_permutation)
 
-        # save the permutation (this will save the permutation as a list of indices from the training data)
-        permutation_path: str = str(pth.Path.cwd() / 'output' / f'{FILE}' / 'permutation' / f'indices_{s}.csv')
-        pd.DataFrame(the_permutation).to_csv(permutation_path)
-        # save the training data so it can be compared with the permutations indices
-        data_path: str = str(pth.Path.cwd() / 'output' / f'{FILE}' / 'permutation' / f'data_{s}.csv')
-        pd.DataFrame(our_training_instances).to_csv(data_path)
+        # save the permutation of the wind speeds
+        permutation_path: str = str(pth.Path.cwd() / 'output' / f'{FILE}' / 'permutation' / f'wind_speed_{s}.csv')
+        pd.DataFrame(our_permuted_training_labels, columns=['Wind']).to_csv(permutation_path)
 
         current_iter_mse = []
         current_iter_rmse = []
