@@ -6,6 +6,7 @@ import sys
 import math
 import random
 import argparse
+import pickle
 # import logging as log
 import typing as typ
 
@@ -59,6 +60,7 @@ np.random.seed(SEED)
 TRAINING_SET_RATIO: float = 0.8
 NUM_BUCKETS: int = 25
 SMOOTH_ITERATIONS: int = 10
+
 
 # This is used to determine the city file that should be read in
 argumentParser = argparse.ArgumentParser()  # create the argument parser
@@ -263,6 +265,14 @@ def main():
     root_errors = []  # a record of the observed root mean errors
     breakpoints = []
     # all_training_sets = []  # collect every training label used
+
+    # keys: training set size, values: spike dictionary (which keys the error by permutation number)
+    spikes: typ.Dict[int, typ.Dict[int, float]] = defaultdict(dict)
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+    # keys: training set size, values: a dictionary (which keys the training set by permutation number)
+    train_sets: typ.Dict[int, typ.Dict] = defaultdict(dict)
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+
     for s in range(SMOOTH_ITERATIONS):
 
         # * Create Permutation * #
@@ -282,16 +292,24 @@ def main():
         # plot_histogram(our_training_labels, 'Training')
         # plot_histogram(our_test_labels, 'Testing')
 
+        # !!!!!!!!!!!! #
+        last_size = 0
+        # !!!!!!!!!!!! #
+
         # Work with subsets of the whole training set -- useful for poisoning as well
         bucket_size = int(math.floor(len(our_training_instances) / NUM_BUCKETS))
         with alive_bar(NUM_BUCKETS, title=f'Smoothing {s+1}/{SMOOTH_ITERATIONS}') as bar:
             for b in range(NUM_BUCKETS):
 
-                # * Get the size of the training dataset& set the number of buckets * #
+                # * Get the size of the training dataset & set the number of buckets * #
                 if b < NUM_BUCKETS - 1:
+                    # calculate the number of instances in the complete partition
                     current_size = bucket_size * (b + 1)
                 else:
+                    # if we are using all the buckets then the number of instances
+                    # is equal to the length of the complete training set
                     current_size = len(our_permuted_training_instances)
+
                 current_instances = []
                 current_labels = []
                 if s == 0:
@@ -311,6 +329,12 @@ def main():
                 clf = Ridge(0.01)  # run a ridge regression
                 clf.fit(current_instances, current_labels)  # fit the model with the current training set
 
+                # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+                # get the last partition that was added to our training data
+                entry: typ.List[float] = our_permuted_training_labels[last_size:current_size]
+                train_sets[current_size][s]: typ.List[float] = entry
+                # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+
                 # * Predict values * #
                 predicted = clf.predict(our_test_instances)
 
@@ -318,6 +342,9 @@ def main():
                 # calculate the errors
                 our_mse = round(mean_squared_error(our_test_labels, predicted), 4)
                 our_rmse = round(math.sqrt(our_mse), 4)
+
+                # add the error to the spike record
+                spikes[current_size][s] = our_mse
 
                 # add the errors to the list
                 current_iter_mse.append(our_mse)
@@ -335,6 +362,7 @@ def main():
                 # * Print the mean squared error * #
                 # print('The mean squared error is: %.15lf' %(our_mse))
                 # print('The root mean squared error is: %.15lf' %(our_rmse))
+                last_size = current_size  # update last size for next loop
                 bar()  # update the loading bar
 
         print(f'median sq. error = {np.median(current_iter_mse)}')
@@ -343,6 +371,16 @@ def main():
         # add the current error values to the global list
         squared_errors.append(current_iter_mse)
         root_errors.append(current_iter_rmse)
+
+    # pickle the spike record storing it in a file for create plot
+    jar: str = str(pth.Path.cwd() / 'output' / f'{FILE}' / 'spike_record.p')
+    pickle.dump(spikes, open(jar, 'wb'))
+
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+    # pickle the spike record storing it in a file for create plot
+    jar: str = str(pth.Path.cwd() / 'output' / f'{FILE}' / 'train_set_record.p')
+    pickle.dump(train_sets, open(jar, 'wb'))
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
     # * Create the Median & Average Confusion Matrices * #
     # for each bucket number find the average/median confusion matrix
@@ -365,8 +403,6 @@ def main():
         frame.to_csv(str(pth.Path.cwd() / 'output' / f'{FILE}' / 'confusion_matrices' / f'average_{b}.csv'))
 
     # get the average error
-    # TODO: Debug 'Index out of Range' Error
-    # ! calculate_averages is throwing an 'Index out of Range' error
     mse_avr = calculate_averages(squared_errors)
     rmse_avr = calculate_averages(root_errors)
     mse_median = calculate_median(squared_errors)
