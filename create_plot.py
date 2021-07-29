@@ -1,4 +1,3 @@
-import pprint
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -22,6 +21,11 @@ def plot_values(title, fl, inpt):
 
     # * create a line plot of the training size vs error * #
     plt.title(title)
+
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+    plt.rc('font', size=15)         # ! testing font size changes
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+
     ax = plt.gca()                  # get the current ax
     ax.set_ylabel('Error Score')    # label the y-axis
     ax.set_xlabel('Training Size')  # label the x-axis
@@ -54,6 +58,7 @@ def plot_values(title, fl, inpt):
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
     # this sets the x-axis ticks
     g.set_xticks(averages['Size'])
+
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
     fig.tight_layout()  # tighten the layout
@@ -412,6 +417,11 @@ def plot_spikes(city: str, size: int, perm: int):
 
     )
 
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+    hst.set_xticks(range(13))  # set the x axis labels
+    hst.set_xticklabels([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+
     # * Display the Plot & Save it * #
     save = str(pth.Path.cwd() / 'output' / f'{city}' / f'{city}_{size}_spike_distribution.png')
     plt.savefig(save)  # save the plot
@@ -500,6 +510,9 @@ def plot_spike_over_training(city: str, size: int, perm: int, annotate: bool):
     )
 
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+    spk.set_xticks(range(13))  # set the x axis labels
+    spk.set_xticklabels([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
     if annotate:
         s = 0
         for spam in spk.patches:
@@ -554,6 +567,9 @@ def plot_spike_over_testing(city: str, size: int, perm: int, annotate: bool):
     train_data = data[: int(len(data) * .80)+1]  # up to & including 80%
     test_data = data[int(len(data) * .80)+1:]    # everything after 80%
 
+    # ! get the size of the test set (len starts at 1 NOT 0)
+    print(f'Length of the Testing Set for {city} is {len(test_data)}')
+
     # * Convert the Data to Beaufort Scale * #
     beaufort_values = pd.DataFrame(  # convert the values to the beaufort scale & put in a dataframe
         list(zip([beaufort_scale(i) for i in train_data], [beaufort_scale(i) for i in test_data])),
@@ -602,6 +618,9 @@ def plot_spike_over_testing(city: str, size: int, perm: int, annotate: bool):
         discrete=True,
     )
 
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+    spk.set_xticks(range(13))  # set the x axis labels
+    spk.set_xticklabels([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
     if annotate:
         s = 0
@@ -699,6 +718,9 @@ def plot_spike_over_complete(city: str, size: int, perm: int, annotate: bool):
         discrete=True,
     )
 
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+    spk.set_xticks(range(13))  # set the x axis labels
+    spk.set_xticklabels([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
     if annotate:
         s = 0
